@@ -13,7 +13,7 @@ app.use(express.json());
 // app.use('/api/v1/test', testRoutes);
 
 app.get('/', (req, res) => {
-    res.send('Hello Worlxzxzd!, ')
+    res.send('Hello baby!, ')
 })
 
 app.get('/test',(req,res) => {
