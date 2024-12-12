@@ -15,6 +15,9 @@ app.use(express.json());
 app.get('/', (req, res) => {
     res.send('Hello baby!, ')
 })
+app.get('/new', (req, res) => {
+    res.send('Hello Krishna!, ')
+})
 
 app.get('/test',(req,res) => {
     res.json([
