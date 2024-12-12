@@ -16,7 +16,7 @@ app.get('/', (req, res) => {
     res.send('Hello baby!, ')
 })
 app.get('/new', (req, res) => {
-    res.send('Hello Krishna!, ')
+    res.send('Hello Krishna! and , KRishnkantn')
 })
 
 app.get('/test',(req,res) => {
