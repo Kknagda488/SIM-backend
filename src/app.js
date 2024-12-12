@@ -18,6 +18,15 @@ app.get('/', (req, res) => {
 app.get('/new', (req, res) => {
     res.send('Hello Krishna! and , KRishnkantn')
 })
+app.post('/post', (req, res) => {
+    const { name, age, amount } = req.body
+    res.json({
+        
+        name,
+        age,
+        amount
+    })
+})
 
 app.get('/test',(req,res) => {
     res.json([
