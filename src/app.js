@@ -3,7 +3,7 @@ import express from "express"
 import { asyncHandler } from "./utils/asyncHandler.js";
 import { ApiResponse } from "./utils/ApiResponse.js";
 import { ApiError } from "./utils/ApiError.js";
-import {StockMaster} from "./models/StockMaster.model.js";
+import {StockMaster} from "./models/stock/StockMaster.model.js";
 const app = express()
 
 app.use(express.json());
@@ -12,13 +12,14 @@ app.use(express.json());
 
 //routes import
 // import testRoutes from "./routes/test/index.routes"
-
+import userRoutes from "./routes/user/user.routes.js"
 // app.use('/api/v1/test', testRoutes);
 
 app.get('/', (req, res) => {
     res.send('Hello baby!, ')
 })
 
+app.use('/api/v1/user', userRoutes);
 
 app.post('/StockMaster/stocks', asyncHandler(async (req, res) => {
     let {stockName, stockUnit} = req.body;
