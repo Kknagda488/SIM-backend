@@ -3,7 +3,7 @@ import express from "express"
 import { asyncHandler } from "./utils/asyncHandler.js";
 import { ApiResponse } from "./utils/ApiResponse.js";
 import { ApiError } from "./utils/ApiError.js";
-import {StockMaster} from "./models/stock/StockMaster.model.js";
+import StockMaster from "./models/stock/StockMaster.model.js";
 const app = express()
 
 app.use(express.json());
@@ -13,6 +13,7 @@ app.use(express.json());
 //routes import
 // import testRoutes from "./routes/test/index.routes"
 import userRoutes from "./routes/user/user.routes.js"
+import { authMiddleware } from "./middlewares/authMiddlewear.js";
 // app.use('/api/v1/test', testRoutes);
 
 app.get('/', (req, res) => {
@@ -21,16 +22,19 @@ app.get('/', (req, res) => {
 
 app.use('/api/v1/user', userRoutes);
 
-app.post('/StockMaster/stocks', asyncHandler(async (req, res) => {
-    let {stockName, stockUnit} = req.body;
-    const stock = new StockMaster({stockName, stockUnit});
+app.post('/StockMaster/stocks',authMiddleware, asyncHandler(async (req, res) => {
+    let {stockName, stockUnit, remark} = req.body;
+    const stock = new StockMaster({stockName, stockUnit,remark, createdBy: req.user._id});
     await stock.save(); 
     res.status(201).json(new ApiResponse(201, stock, "Stock created successfully"));
 }));
 
 // Get All Stocks
-app.get('/StockMaster/stocks', asyncHandler(async (req, res) => {
-    const stocks = await StockMaster.find();
+app.get('/StockMaster/stocks',authMiddleware, asyncHandler(async (req, res) => {
+    const stocks = await StockMaster.find({
+        createdBy: req.user._id,
+    }).populate('createdBy');
+
     res.status(200).json(new ApiResponse(200, stocks, "Stocks retrieved successfully"));
 }));
 
