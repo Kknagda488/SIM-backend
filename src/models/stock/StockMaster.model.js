@@ -11,20 +11,23 @@ const StockMasterSchema = new Schema({
         type: String,
         required: true,
     },
-    
-    createdAt: {
-        type: Date,
-        default: Date.now
+    remark: {
+        type: String,
+        required: false,
     },
-    updatedAt: {
-        type: Date,
-        default: Date.now
-    }
-});
+    createdBy:{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+},
+{
+    timestamps: true, // Automatically add createdAt and updatedAt fields
+  }
+);
 
 StockMasterSchema.pre('save', function(next) {
     this.updatedAt = Date.now();
     next();
 });
-
-export const StockMaster = mongoose.model('StockMaster', StockMasterSchema);
+export default mongoose.model("StockMaster", StockMasterSchema);
