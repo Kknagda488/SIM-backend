@@ -42,7 +42,7 @@ export const createUser = async (req, res) => {
         })
 
         const createdUser = await User.findById(user._id).select(
-            "-password -refreshToken -role"
+            "-password -refreshToken "
         )
         if (!createdUser) {
             return res.status(500).json({message: "Something went wrong while registering the user"})
@@ -62,6 +62,7 @@ export const createUser = async (req, res) => {
 
 export const getUserProfile = async (req, res) => {
     try {
+        console.log("api called");
         const user = await User.findById(req.user._id);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
@@ -95,16 +96,17 @@ export const loginUser = asyncHandler(async (req,res) =>{
      }
      const {accessToken, refreshToken} = await generateAccessAndRefereshTokens(user._id,res)
 
-     const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
-
- 
+     let loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+    //  let obj = {
+    //     name: 
+    //  }
      return res
      .status(200)
      .json(
          new ApiResponse(
              200, 
              {
-                 user: loggedInUser, accessToken, refreshToken
+                user:loggedInUser , accessToken, refreshToken
              },
              "User logged In Successfully"
          )
@@ -170,3 +172,47 @@ export const logoutUser = asyncHandler(async (req,res) => {
     .json(new ApiResponse(200, {}, "User logged Out"))
 })
 
+
+export const updatePassword = asyncHandler(async (req, res, next) => {
+    try {
+      const { oldPassword, newPassword } = req.body;
+  
+      // Validate request body
+      if (!oldPassword || !newPassword) {
+        return res
+          .status(400)
+          .json(new ApiError(400, "Old password and new password are required"));
+      }
+  
+      // Get the logged-in user (assuming user ID is in `req.user`)
+      const userId = req.user._id; // Replace with your auth middleware's user object
+      const user = await User.findById(userId);
+  
+      if (!user) {
+        return res.status(404).json(new ApiError(404, "User not found"));
+      }
+  
+      // Verify old password
+      const isPasswordValid = await user.isPasswordCorrect(oldPassword);
+      if (!isPasswordValid) {
+        return res.status(401).json(new ApiError(401, "Old password is incorrect"));
+      }
+  
+      // Update password
+      user.password = newPassword;
+      await user.save();
+  
+      return res
+        .status(200)
+        .json(
+          new ApiResponse(
+            200,
+            null,
+            "Password updated successfully"
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  });
+  

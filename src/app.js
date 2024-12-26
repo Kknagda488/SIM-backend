@@ -14,55 +14,30 @@ app.use(express.json());
 // import testRoutes from "./routes/test/index.routes"
 import userRoutes from "./routes/user/user.routes.js"
 import { authMiddleware } from "./middlewares/authMiddlewear.js";
+import purchaseRoutes from "./routes/purchase/purchase.routes.js";
+import sellRoutes from "./routes/sell/sell.routes.js";
+import StockInventory from "./models/stock/StockInventory.model.js";
+import stockMasterRoutes from "./routes/stock/stockMaster.routes.js";
+
 // app.use('/api/v1/test', testRoutes);
 
 app.get('/', (req, res) => {
     res.send('Hello baby!, ')
 })
 
+app.get('/data', async (req, res) => {
+    let inventory = await StockInventory.find().populate('stockId').populate('transactionId')
+    return res.json({
+        data: inventory
+    })
+})
+
 app.use('/api/v1/user', userRoutes);
+app.use('/api/v1/purchase', purchaseRoutes)
+app.use('/api/v1/sell', sellRoutes)
+app.use('/api/v1/StockMaster', stockMasterRoutes)
 
-app.post('/StockMaster/stocks',authMiddleware, asyncHandler(async (req, res) => {
-    let {stockName, stockUnit, remark} = req.body;
-    const stock = new StockMaster({stockName, stockUnit,remark, createdBy: req.user._id});
-    await stock.save(); 
-    res.status(201).json(new ApiResponse(201, stock, "Stock created successfully"));
-}));
 
-// Get All Stocks
-app.get('/StockMaster/stocks',authMiddleware, asyncHandler(async (req, res) => {
-    const stocks = await StockMaster.find({
-        createdBy: req.user._id,
-    }).populate('createdBy');
 
-    res.status(200).json(new ApiResponse(200, stocks, "Stocks retrieved successfully"));
-}));
-
-// Get Stock by ID
-app.get('/StockMaster/stocks/:id', asyncHandler(async (req, res) => {
-    const stock = await StockMaster.findById(req.params.id);
-    if (!stock) {
-        return res.status(404).json(new ApiError(404, "Stock not found"))
-    }
-    res.status(200).json(new ApiResponse(200, stock, "Stock retrieved successfully"));
-}));
-
-// Update Stock
-app.put('/StockMaster/stocks/:id', asyncHandler(async (req, res) => {
-    const stock = await StockMaster.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!stock) {
-        return res.status(404).json(new ApiError(404, "Stock not found"))
-    }
-    res.status(200).json(new ApiResponse(200, stock, "Stock updated successfully"));
-}));
-
-// Delete Stock
-app.delete('/StockMaster/stocks/:id', asyncHandler(async (req, res) => {
-    const stock = await StockMaster.findByIdAndDelete(req.params.id);
-    if (!stock) {
-        return res.status(404).json(new ApiError(404, "Stock not found"))
-    }
-    res.status(200).json(new ApiResponse(200, stock, "Stock deleted successfully"));
-}));
 
 export { app }

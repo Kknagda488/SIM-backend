@@ -9,7 +9,7 @@ const StockMasterSchema = new Schema({
     },
     stockUnit: {
         type: String,
-        required: true,
+        required: false,
     },
     remark: {
         type: String,
