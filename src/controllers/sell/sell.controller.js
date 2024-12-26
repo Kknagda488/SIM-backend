@@ -11,9 +11,9 @@ const router = express.Router();
 // POST: Create a new sell
 export const createSell = asyncHandler(async (req, res, next) => {
   try {
-    const { stockId, stockQty,salesDate, sellPrice, remarks } = req.body;
+    const { stockId, stockQty,salesDate, stockSoldPrice, remarks } = req.body;
 
-    if (!stockId || !stockQty || !sellPrice) {
+    if (!stockId || !stockQty || !stockSoldPrice) {
       return res.status(400).json(new ApiError(400, "All required fields must be provided"));
     }
 
@@ -27,9 +27,9 @@ export const createSell = asyncHandler(async (req, res, next) => {
       salesDate,
       createdBy: req.user._id,
       stockQty,
-      stockSoldPrice:sellPrice,
+      stockSoldPrice:stockSoldPrice,
       remarks,
-      netTotal: stockQty * sellPrice,
+      netTotal: (stockQty * stockSoldPrice).toFixed(2),
     });
 
     const savedSell = await newSell.save();
@@ -111,7 +111,7 @@ export const sellsList = asyncHandler(async (req, res, next) => {
 export const updateSell = asyncHandler(async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { stockId, stockQty, sellPrice, remarks } = req.body;
+    const { stockId, stockQty, stockSoldPrice, remarks } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json(new ApiError(400, "Invalid sell ID"));
@@ -135,9 +135,9 @@ export const updateSell = asyncHandler(async (req, res, next) => {
 
     sell.stockId = stockId || sell.stockId;
     sell.stockQty = stockQty || sell.stockQty;
-    sell.sellPrice = sellPrice || sell.sellPrice;
+    sell.stockSoldPrice = stockSoldPrice || sell.stockSoldPrice;
     sell.remarks = remarks || sell.remarks;
-    sell.totalAmount = sell.stockQty * sell.sellPrice;
+    sell.totalAmount = (sell.stockQty * sell.stockSoldPrice).toFixed(2);
 
     const updatedSell = await sell.save();
 
