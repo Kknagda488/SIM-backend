@@ -18,57 +18,58 @@ import Purchase from "../../models/purchase/Purchase.model.js";
 // })
 
 export const getCfBfList = asyncHandler(async (req, res) => {
-    // Fetch all stocks from inventory with remaining > 0
-    const inventoryRecords = await StockInventory.find({
-      remaining: { $gt: 0 }, // Only include stocks with remaining quantity
-      createdBy: req.user._id,
-    }).populate("stockId");
-  
-    if (!inventoryRecords.length) {
-      return res
-        .status(404)
-        .json(new ApiError(404, "No inventory records found with remaining stock"));
-    }
-  
-    // Extract all stock IDs from inventory records
-    const stockIds = inventoryRecords.map((record) => record.stockId._id);
-  
-    // Fetch corresponding CFBF records for these stock IDs
-    const cfbfRecords = await InventoryCFBF.find({
-      stockId: { $in: stockIds },
-      createdBy: req.user._id,
-    });
-  
-    // Map CFBF records for quick lookup and calculate overall status
-    const cfbfMap = cfbfRecords.reduce((map, record) => {
-      const stockId = record.stockId.toString();
-      if (!map[stockId]) {
-        map[stockId] = { statuses: [] };
-      }
-      map[stockId].statuses.push(record.status);
-      return map;
-    }, {});
-  
-    // Prepare the consolidated response
-    const response = inventoryRecords.map((inventory) => {
-      const stockId = inventory.stockId._id.toString();
-      const relatedCFBF = cfbfMap[stockId]?.statuses || [];
-  
-      // Determine overall status: "pending" if any related CFBF is pending, otherwise "complete"
-      const overallStatus = relatedCFBF.includes("pending") ? "pending" : "complete";
-  
-      return {
-        stockId: inventory.stockId._id,
-        stockName: inventory.stockId.stockName, // Assuming stock name is available in inventory schema
-        remainingStock: inventory.remaining,
-        cfbfStatus: overallStatus,
-      };
-    });
-  
+  // Fetch all stocks from inventory with remaining > 0
+  const inventoryRecords = await StockInventory.find({
+    remaining: { $gt: 0 }, // Only include stocks with remaining quantity
+    createdBy: req.user._id,
+  }).populate("stockId");
+
+  if (!inventoryRecords.length) {
     return res
-      .status(200)
-      .json(new ApiResponse(200, response, "Inventory with CFBF status fetched successfully"));
+      .status(404)
+      .json(new ApiError(404, "No inventory records found with remaining stock"));
+  }
+
+  // Extract all stock IDs from inventory records
+  const stockIds = inventoryRecords.map((record) => record.stockId._id);
+
+  // Fetch corresponding CFBF records for these stock IDs
+  const cfbfRecords = await InventoryCFBF.find({
+    stockId: { $in: stockIds },
+    createdBy: req.user._id,
   });
+
+  // Map CFBF records for quick lookup and calculate overall status
+  const cfbfMap = cfbfRecords.reduce((map, record) => {
+    const stockId = record.stockId.toString();
+    if (!map[stockId]) {
+      map[stockId] = [];
+    }
+    map[stockId].push(record.status);
+    return map;
+  }, {});
+
+  // Prepare the consolidated response
+  const response = inventoryRecords.map((inventory) => {
+    const stockId = inventory.stockId._id.toString();
+    const relatedStatuses = cfbfMap[stockId] || []; // Get related statuses or an empty array
+
+    // Determine overall status: "initial" if no related statuses, otherwise include statuses
+    const overallStatus = relatedStatuses.length > 0 ? relatedStatuses : ["initial"];
+    console.log(overallStatus);
+    return {
+      stockId: inventory.stockId._id,
+      stockName: inventory.stockId.stockName, // Assuming stock name is available in inventory schema
+      remainingStock: inventory.remaining,
+      cfbfStatus: overallStatus[overallStatus.length - 1],
+    };
+  });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, response, "Inventory with CFBF status fetched successfully"));
+});
+
   
 
 // export const carryForward = asyncHandler(async (req, res) => {
