@@ -4,7 +4,7 @@ import { ApiError } from "../../utils/ApiError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import Sell from "../../models/sell/Sell.model.js";
-
+import StockMaster from "../../models/stock/StockMaster.model.js";
 import moment from 'moment';
 import Purchase from "../../models/purchase/Purchase.model.js";
 
@@ -371,3 +371,107 @@ export const stockTransaction = asyncHandler(async (req, res) => {
 //     await cfbfRecord.save();
 //     return res.status(201).json(new ApiResponse(201, broughtForward, "Brought Forward successfully"))
 // })
+
+
+
+
+export const getStats = async (req, res) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    
+    const [purchases, sells, stockInventory, stockMasters] = await Promise.all([
+      Purchase.find({createdBy: req.user._id}),
+      Sell.find({createdBy: req.user._id}),
+      StockInventory.find({createdBy: req.user._id}).populate('stockId'),
+      StockMaster.find({createdBy: req.user._id})
+    ]);
+
+    // Calculate profit/loss
+    let totalCost = 0, totalRevenue = 0;
+    let todayCost = 0, todayRevenue = 0;
+
+    purchases.forEach(purchase => {
+      totalCost += purchase.netTotal;
+      if (purchase.purchaseDate >= todayStart && purchase.purchaseDate <= todayEnd) {
+        todayCost += purchase.netTotal;
+      }
+    });
+
+    sells.forEach(sell => {
+      totalRevenue += sell.netTotal;
+      if (sell.salesDate >= todayStart && sell.salesDate <= todayEnd) {
+        todayRevenue += sell.netTotal;
+      }
+    });
+
+    // Group inventory by stock
+    const stockMap = new Map();
+    const colors = ['#4A90E2', '#50C878', '#F5A623', '#E15F8C', '#9B59B6'];
+    
+    stockMasters.forEach((stock, index) => {
+      stockMap.set(stock._id.toString(), {
+        name: stock.stockName,
+        quantity: 0,
+        value: 0,
+        color: colors[index % colors.length]
+      });
+    });
+
+    stockInventory.forEach(inventory => {
+      const stockData = stockMap.get(inventory.stockId._id.toString());
+      if (stockData) {
+        stockData.quantity += inventory.remaining;
+        // Use the last transaction price for value calculation
+        const lastPurchase = purchases.find(p => p.stockId.toString() === inventory.stockId._id.toString());
+        const price = lastPurchase ? lastPurchase.stockPurchasePrice : 0;
+        stockData.value += inventory.remaining * price;
+      }
+    });
+
+    const totalStockUnits = Array.from(stockMap.values())
+      .reduce((sum, stock) => sum + stock.quantity, 0);
+
+    const overallProfitLoss = totalRevenue - totalCost;
+    const todayProfitLoss = todayRevenue - todayCost;
+
+    const response = {
+      status: "success",
+      data: {
+        profitLoss: {
+          today: {
+            value: `₹${Math.abs(todayProfitLoss).toLocaleString('en-IN')}`,
+            isProfit: todayProfitLoss >= 0,
+            color: todayProfitLoss >= 0 ? "#4CAF50" : "#FF5252",
+            timestamp: `Today, ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+          },
+          overall: {
+            value: `₹${Math.abs(overallProfitLoss).toLocaleString('en-IN')}`,
+            isProfit: overallProfitLoss >= 0,
+            color: overallProfitLoss >= 0 ? "#4CAF50" : "#FF5252",
+            timestamp: `Last updated: Today, ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+          }
+        },
+        totalStockUnit: `${totalStockUnits.toLocaleString('en-IN')} units`,
+        inventory: Array.from(stockMap.values())
+          .filter(stock => stock.quantity > 0)
+          .map(stock => ({
+            ...stock,
+            value: `₹${Math.round(stock.value).toLocaleString('en-IN')}`,
+            quantity: Math.round(stock.quantity)
+          }))
+      }
+    };
+
+    return res.status(200).json(response);
+
+  } catch (error) {
+    console.error('Error generating stats:', error);
+    return res.status(500).json({
+      status: "error",
+      message: error.message
+    });
+  }
+};
