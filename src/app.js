@@ -18,6 +18,8 @@ import purchaseRoutes from "./routes/purchase/purchase.routes.js";
 import sellRoutes from "./routes/sell/sell.routes.js";
 import StockInventory from "./models/stock/StockInventory.model.js";
 import stockMasterRoutes from "./routes/stock/stockMaster.routes.js";
+import inventoryRoutes from "./routes/stock/inventory.routes.js";
+import cfbfRoutes from "./routes/stock/cfbf.routes.js";
 
 // app.use('/api/v1/test', testRoutes);
 
@@ -36,6 +38,8 @@ app.use('/api/v1/user', userRoutes);
 app.use('/api/v1/purchase', purchaseRoutes)
 app.use('/api/v1/sell', sellRoutes)
 app.use('/api/v1/StockMaster', stockMasterRoutes)
+app.use('/api/v1/inventory',inventoryRoutes)
+app.use('/api/v1/cfbf',cfbfRoutes)
 
 
 

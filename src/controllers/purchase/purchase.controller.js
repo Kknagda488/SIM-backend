@@ -77,7 +77,7 @@ export const createPurchase = asyncHandler(async (req, res, next) => {
     const savedPurchase = await newPurchase.save();
 
     // Check if the stockId exists in inventory
-    let existingInventory = await StockInventory.findOne({ stockId });
+    let existingInventory = await StockInventory.findOne({ stockId, createdBy: req.user._id });
 
     if (existingInventory) {
       // Update existing inventory
@@ -94,6 +94,7 @@ export const createPurchase = asyncHandler(async (req, res, next) => {
       const newInventory = new StockInventory({
         transactionId: savedPurchase._id,
         transactionType: "Purchase",
+        createdBy: req.user._id,
         stockId,
         date: new Date(),
         totalPurchased: stockQty,
@@ -147,7 +148,7 @@ export const purchaseList = asyncHandler(async (req, res, next) => {
 export const inventoryList = asyncHandler(async (req, res, next) => {
   try {
     // Correctly find purchases by user ID and populate stockId field
-    const inventory = await StockInventory.find({ remaining: { $gt: 0 } }).populate("stockId");
+    const inventory = await StockInventory.find({ remaining: { $gt: 0 }, createdBy:req.user._id }).populate("stockId");
 
 
     // Handle case when no sells are found
@@ -608,6 +609,258 @@ export const deletePurchase = asyncHandler(async (req, res, next) => {
 //   }
 // });
 
+// last working
+// export const profitLossReport = asyncHandler(async (req, res, next) => {
+//   try {
+//     console.log('Profit/Loss report requested');
+
+//     const { startDate, endDate } = req.query;
+
+//     // Validate date parameters
+//     if (!startDate || !endDate) {
+//       return res.status(400).json({
+//         statusCode: 400,
+//         message: "Start date and end date are required",
+//       });
+//     }
+
+  
+//     // Create date range filter
+//     const dateFilter = {
+//       purchaseDate: {
+//         $gte: new Date(startDate),
+//         $lte: new Date(endDate),
+//       },
+//     };
+//     const querySalesDate = {
+//       salesDate: {
+//         $gte: new Date(startDate),
+//         $lte: new Date(endDate),
+//       },
+//     };
+
+//     // Fetch purchases and sells within date range
+//     const purchases = await Purchase.find(dateFilter).lean().populate('stockId');
+//     const sells = await Sell.find(querySalesDate).lean().populate('stockId');
+
+//     console.log('Purchases:', purchases);
+//     console.log('Sells:', sells);
+//     const report = [];
+//     const groupedByStock = {};
+
+//     // Process purchases
+//     purchases.forEach((purchase) => {
+//       const {
+//         stockId,
+//         purchaseDate,
+//         stockQty,
+//         stockPurchasePrice,
+//         scriptName, // Assuming you have script name in the purchase model
+//       } = purchase;
+
+//       const netAmount = stockQty * stockPurchasePrice;
+
+//       report.push({
+//         stockId: stockId.stockName,
+//         scriptName,
+//         date: purchaseDate.toISOString().split('T')[0],
+//         type: "BUY",
+//         buyQty: stockQty,
+//         sellQty: 0,
+//         rate: stockPurchasePrice,
+//         netAmount: parseFloat(netAmount.toFixed(2)),
+//         profitLoss: 0,
+//       });
+
+//       // Group by stock
+//       if (!groupedByStock[stockId._id]) {
+//         groupedByStock[stockId._id] = {
+//           scriptName,
+//           buyQty: 0,
+//           sellQty: 0,
+//           buyTurnover: 0,
+//           sellTurnover: 0,
+//           profitLoss: 0,
+//         };
+//       }
+//       groupedByStock[stockId._id].buyQty += stockQty;
+//       groupedByStock[stockId._id].buyTurnover += netAmount;
+//     });
+
+//     // Process sells
+//     sells.forEach((sell) => {
+//       const {
+//         stockId,
+//         salesDate,
+//         stockQty,
+//         stockSoldPrice,
+//         scriptName,
+//       } = sell;
+
+//       const netAmount = stockQty * stockSoldPrice;
+
+//       // Calculate Profit/Loss based on average purchase price
+//       const avgPurchasePrice =
+//         groupedByStock[stockId._id]?.buyTurnover / groupedByStock[stockId._id]?.buyQty || 0;
+//       const profitLoss = (stockSoldPrice - avgPurchasePrice) * stockQty;
+
+//       report.push({
+//         stockId: stockId.stockName,
+//         scriptName,
+//         date: salesDate.toISOString().split('T')[0],
+//         type: "SELL",
+//         buyQty: 0,
+//         sellQty: stockQty,
+//         rate: stockSoldPrice,
+//         netAmount: parseFloat(netAmount.toFixed(2)),
+//         profitLoss: parseFloat(profitLoss.toFixed(2)),
+//       });
+
+//       // Update grouped data
+//       groupedByStock[stockId._id].sellQty += stockQty;
+//       groupedByStock[stockId._id].sellTurnover += netAmount;
+//       groupedByStock[stockId._id].profitLoss += profitLoss;
+//     });
+
+//     // Calculate summary statistics
+//     const summary = {
+//       totalBuyQty: 0,
+//       totalSellQty: 0,
+//       totalBuyTurnover: 0,
+//       totalSellTurnover: 0,
+//       totalProfitLoss: 0,
+//     };
+
+//     // Add script-wise totals and update summary
+//     Object.keys(groupedByStock).forEach((stockId) => {
+//       const stockData = groupedByStock[stockId];
+      
+//       report.push({
+//         stockId: "",
+//         scriptName: stockData.scriptName,
+//         type: "TOTAL",
+//         date: "",
+//         buyQty: stockData.buyQty,
+//         sellQty: stockData.sellQty,
+//         rate: null,
+//         netAmount: parseFloat((stockData.buyTurnover - stockData.sellTurnover).toFixed(2)),
+//         profitLoss: parseFloat(stockData.profitLoss.toFixed(2)),
+//       });
+
+//       // Update summary
+//       summary.totalBuyQty += stockData.buyQty;
+//       summary.totalSellQty += stockData.sellQty;
+//       summary.totalBuyTurnover += stockData.buyTurnover;
+//       summary.totalSellTurnover += stockData.sellTurnover;
+//       summary.totalProfitLoss += stockData.profitLoss;
+//     });
+
+//     // Format numbers in summary
+//     Object.keys(summary).forEach(key => {
+//       if (typeof summary[key] === 'number') {
+//         summary[key] = parseFloat(summary[key].toFixed(2));
+//       }
+//     });
+
+//     // Sort report by date (newest first) and put TOTALs at the end
+//     const sortedReport = report.sort((a, b) => {
+//       if (a.type === 'TOTAL' && b.type !== 'TOTAL') return 1;
+//       if (a.type !== 'TOTAL' && b.type === 'TOTAL') return -1;
+//       if (!a.date || !b.date) return 0;
+//       return new Date(b.date) - new Date(a.date);
+//     });
+
+//     res.json({
+//       statusCode: 200,
+//       message: "Report generated successfully",
+//       data: sortedReport,
+//       summary: summary,
+//     });
+
+//   } catch (error) {
+//     console.error('Error generating profit/loss report:', error);
+//     res.status(500).json({
+//       statusCode: 500,
+//       message: "Failed to generate report",
+//       error: error.message,
+//     });
+//   }
+// })
+// try {
+//   const purchases = await Purchase.find().lean();
+//   const sells = await Sell.find().lean();
+
+//   const report = [];
+//   const groupedByStock = {};
+
+//   // Process purchases
+//   purchases.forEach((purchase) => {
+//     const { stockId, purchaseDate, stockQty, stockSoldPrice } = purchase;
+//     const netAmount = stockQty * stockPurchasePrice;
+
+//     report.push({
+//       stockId,
+//       date: purchaseDate,
+//       type: "BUY",
+//       buyQty: stockQty,
+//       sellQty: 0,
+//       rate: stockPurchasePrice,
+//       netAmount,
+//       profitLoss: 0,
+//     });
+
+//     // Group by stock
+//     if (!groupedByStock[stockId]) {
+//       groupedByStock[stockId] = { buyQty: 0, sellQty: 0, buyTurnover: 0, sellTurnover: 0, profitLoss: 0 };
+//     }
+//     groupedByStock[stockId].buyQty += stockQty;
+//     groupedByStock[stockId].buyTurnover += netAmount;
+//   });
+
+//   // Process sells
+//   sells.forEach((sell) => {
+//     const { stockId, purchaseDate, stockQty, stockPurchasePrice } = sell;
+//     const netAmount = stockQty * stockPurchasePrice;
+
+//     // Calculate Profit/Loss (example: sell price - avg purchase price)
+//     const avgPurchasePrice = groupedByStock[stockId]?.buyTurnover / groupedByStock[stockId]?.buyQty || 0;
+//     const profitLoss = (stockPurchasePrice - avgPurchasePrice) * stockQty;
+
+//     report.push({
+//       stockId,
+//       date: purchaseDate,
+//       type: "SELL",
+//       buyQty: 0,
+//       sellQty: stockQty,
+//       rate: stockPurchasePrice,
+//       netAmount,
+//       profitLoss,
+//     });
+
+//     // Update grouped data
+//     groupedByStock[stockId].sellQty += stockQty;
+//     groupedByStock[stockId].sellTurnover += netAmount;
+//     groupedByStock[stockId].profitLoss += profitLoss;
+//   });
+
+//   // Add script-wise totals to report
+//   Object.keys(groupedByStock).forEach((stockId) => {
+//     const stockData = groupedByStock[stockId];
+//     report.push({
+//       stockId,
+//       type: "TOTAL",
+//       buyQty: stockData.buyQty,
+//       sellQty: stockData.sellQty,
+//       buyTurnover: stockData.buyTurnover,
+//       sellTurnover: stockData.sellTurnover,
+//       profitLoss: stockData.profitLoss,
+//     });
+//   });
+
+//   res.json(report);
+// } catch (error) {
+//   res.status(500).json({ error: error.message });
+// }
 
 export const profitLossReport = asyncHandler(async (req, res, next) => {
   try {
@@ -623,169 +876,140 @@ export const profitLossReport = asyncHandler(async (req, res, next) => {
       });
     }
 
-    // {
-    //   stockName: "Apple Inc.",
-    //   date: "2021-09-01",
-    //   type: "BUY/SELL",
-    //   buyQty: 100,
-    //   buyprice: 120,
-    //   avgByPrice: 120,
-    //   sellQty: 50,
-    //   sellPrice: 130,
-    //   avgSellPrice: 130,
-    //   netAmount: buyQty * buyPrice - ,
-    //   profitLoss: 
-    // }
     // Create date range filter
     const dateFilter = {
       purchaseDate: {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
       },
+      createdBy: req.user._id
     };
     const querySalesDate = {
       salesDate: {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
       },
+      createdBy: req.user._id
+
     };
 
     // Fetch purchases and sells within date range
     const purchases = await Purchase.find(dateFilter).lean().populate('stockId');
     const sells = await Sell.find(querySalesDate).lean().populate('stockId');
 
-    console.log('Purchases:', purchases);
-    console.log('Sells:', sells);
-    const report = [];
-    const groupedByStock = {};
+    // Initialize object to store stock-wise data
+    const stockReport = {};
+    // console.log('Purchases:', purchases);
+    // console.log('Sells:', sells);
 
     // Process purchases
     purchases.forEach((purchase) => {
-      const {
-        stockId,
-        purchaseDate,
-        stockQty,
-        stockPurchasePrice,
-        scriptName, // Assuming you have script name in the purchase model
-      } = purchase;
+      const { stockId, stockQty, stockPurchasePrice } = purchase;
+      console.log('purchase',purchase)
+      const stockKey = stockId._id;
 
-      const netAmount = stockQty * stockPurchasePrice;
-
-      report.push({
-        stockId: stockId.stockName,
-        scriptName,
-        date: purchaseDate.toISOString().split('T')[0],
-        type: "BUY",
-        buyQty: stockQty,
-        sellQty: 0,
-        rate: stockPurchasePrice,
-        netAmount: parseFloat(netAmount.toFixed(2)),
-        profitLoss: 0,
-      });
-
-      // Group by stock
-      if (!groupedByStock[stockId._id]) {
-        groupedByStock[stockId._id] = {
-          scriptName,
-          buyQty: 0,
-          sellQty: 0,
-          buyTurnover: 0,
-          sellTurnover: 0,
-          profitLoss: 0,
+      if (!stockReport[stockKey]) {
+        stockReport[stockKey] = {
+          stockName: stockId.stockName,
+          totalBuyQty: 0,
+          totalSellQty: 0,
+          totalBuyAmount: 0,
+          totalSellAmount: 0,
+          avgBuyPrice: 0,
+          avgSellPrice: 0,
+          remingStock: 0,
+          netAmount: 0,
+          profitLoss: 0
         };
       }
-      groupedByStock[stockId._id].buyQty += stockQty;
-      groupedByStock[stockId._id].buyTurnover += netAmount;
+
+      stockReport[stockKey].totalBuyQty += stockQty;
+      stockReport[stockKey].totalBuyAmount += stockQty * stockPurchasePrice;
+    });
+
+    // Calculate average buy price for each stock
+    Object.values(stockReport).forEach(stock => {
+      stock.avgBuyPrice = stock.totalBuyQty > 0 
+        ? parseFloat((stock.totalBuyAmount / stock.totalBuyQty).toFixed(2))
+        : 0;
     });
 
     // Process sells
     sells.forEach((sell) => {
-      const {
-        stockId,
-        salesDate,
-        stockQty,
-        stockSoldPrice,
-        scriptName,
-      } = sell;
+      const { stockId, stockQty, stockSoldPrice } = sell;
+      const stockKey = stockId._id.toString();
 
-      const netAmount = stockQty * stockSoldPrice;
-
-      // Calculate Profit/Loss based on average purchase price
-      const avgPurchasePrice =
-        groupedByStock[stockId._id]?.buyTurnover / groupedByStock[stockId._id]?.buyQty || 0;
-      const profitLoss = (stockSoldPrice - avgPurchasePrice) * stockQty;
-
-      report.push({
-        stockId: stockId.stockName,
-        scriptName,
-        date: salesDate.toISOString().split('T')[0],
-        type: "SELL",
-        buyQty: 0,
-        sellQty: stockQty,
-        rate: stockSoldPrice,
-        netAmount: parseFloat(netAmount.toFixed(2)),
-        profitLoss: parseFloat(profitLoss.toFixed(2)),
-      });
-
-      // Update grouped data
-      groupedByStock[stockId._id].sellQty += stockQty;
-      groupedByStock[stockId._id].sellTurnover += netAmount;
-      groupedByStock[stockId._id].profitLoss += profitLoss;
+      if (stockReport[stockKey]) {
+        stockReport[stockKey].totalSellQty += stockQty;
+        stockReport[stockKey].totalSellAmount += stockQty * stockSoldPrice;
+      }
     });
 
-    // Calculate summary statistics
-    const summary = {
+    // Calculate final metrics for each stock
+    const finalReport = Object.values(stockReport).map(stock => {
+      // Calculate average sell price
+      stock.avgSellPrice = stock.totalSellQty > 0
+        ? parseFloat((stock.totalSellAmount / stock.totalSellQty).toFixed(2))
+        : 0;
+
+      // Calculate remaining stock
+      stock.remingStock = stock.totalBuyQty - stock.totalSellQty;
+
+      // Calculate net amount (total buy amount - total sell amount)
+      stock.netAmount = parseFloat((stock.totalBuyAmount - stock.totalSellAmount).toFixed(2));
+
+      // Calculate profit/loss
+      stock.profitLoss = parseFloat(
+        (stock.avgSellPrice * stock.totalSellQty - stock.avgBuyPrice * stock.totalSellQty).toFixed(2)
+      );
+
+      // Format amounts
+      stock.totalBuyAmount = parseFloat(stock.totalBuyAmount.toFixed(2));
+      stock.totalSellAmount = parseFloat(stock.totalSellAmount.toFixed(2));
+
+      return {
+        stockName: stock.stockName,
+        totalBuyQty: stock.totalBuyQty,
+        totalSellQty: stock.totalSellQty,
+        avgBuyPrice: stock.avgBuyPrice,
+        avgSellPrice: stock.avgSellPrice,
+        buyAmount: stock.totalBuyAmount,
+        sellAmount: stock.totalSellAmount,
+        remingStock: stock.remingStock,
+        netAmount: stock.netAmount,
+        profitLoss: stock.profitLoss
+      };
+    });
+
+    // Calculate overall summary
+    const summary = finalReport.reduce((acc, stock) => {
+      return {
+        totalBuyQty: acc.totalBuyQty + stock.totalBuyQty,
+        totalSellQty: acc.totalSellQty + stock.totalSellQty,
+        totalBuyAmount: acc.totalBuyAmount + stock.buyAmount,
+        totalSellAmount: acc.totalSellAmount + stock.sellAmount,
+        totalProfitLoss: acc.totalProfitLoss + stock.profitLoss
+      };
+    }, {
       totalBuyQty: 0,
       totalSellQty: 0,
-      totalBuyTurnover: 0,
-      totalSellTurnover: 0,
-      totalProfitLoss: 0,
-    };
-
-    // Add script-wise totals and update summary
-    Object.keys(groupedByStock).forEach((stockId) => {
-      const stockData = groupedByStock[stockId];
-      
-      report.push({
-        stockId: "",
-        scriptName: stockData.scriptName,
-        type: "TOTAL",
-        date: "",
-        buyQty: stockData.buyQty,
-        sellQty: stockData.sellQty,
-        rate: null,
-        netAmount: parseFloat((stockData.buyTurnover - stockData.sellTurnover).toFixed(2)),
-        profitLoss: parseFloat(stockData.profitLoss.toFixed(2)),
-      });
-
-      // Update summary
-      summary.totalBuyQty += stockData.buyQty;
-      summary.totalSellQty += stockData.sellQty;
-      summary.totalBuyTurnover += stockData.buyTurnover;
-      summary.totalSellTurnover += stockData.sellTurnover;
-      summary.totalProfitLoss += stockData.profitLoss;
+      totalBuyAmount: 0,
+      totalSellAmount: 0,
+      totalProfitLoss: 0
     });
 
-    // Format numbers in summary
+    // Format summary numbers
     Object.keys(summary).forEach(key => {
       if (typeof summary[key] === 'number') {
         summary[key] = parseFloat(summary[key].toFixed(2));
       }
     });
 
-    // Sort report by date (newest first) and put TOTALs at the end
-    const sortedReport = report.sort((a, b) => {
-      if (a.type === 'TOTAL' && b.type !== 'TOTAL') return 1;
-      if (a.type !== 'TOTAL' && b.type === 'TOTAL') return -1;
-      if (!a.date || !b.date) return 0;
-      return new Date(b.date) - new Date(a.date);
-    });
-
     res.json({
       statusCode: 200,
       message: "Report generated successfully",
-      data: sortedReport,
-      summary: summary,
+      data: finalReport,
+      summary: summary
     });
 
   } catch (error) {
@@ -793,84 +1017,9 @@ export const profitLossReport = asyncHandler(async (req, res, next) => {
     res.status(500).json({
       statusCode: 500,
       message: "Failed to generate report",
-      error: error.message,
+      error: error.message
     });
   }
-  // try {
-  //   const purchases = await Purchase.find().lean();
-  //   const sells = await Sell.find().lean();
-
-  //   const report = [];
-  //   const groupedByStock = {};
-
-  //   // Process purchases
-  //   purchases.forEach((purchase) => {
-  //     const { stockId, purchaseDate, stockQty, stockSoldPrice } = purchase;
-  //     const netAmount = stockQty * stockPurchasePrice;
-
-  //     report.push({
-  //       stockId,
-  //       date: purchaseDate,
-  //       type: "BUY",
-  //       buyQty: stockQty,
-  //       sellQty: 0,
-  //       rate: stockPurchasePrice,
-  //       netAmount,
-  //       profitLoss: 0,
-  //     });
-
-  //     // Group by stock
-  //     if (!groupedByStock[stockId]) {
-  //       groupedByStock[stockId] = { buyQty: 0, sellQty: 0, buyTurnover: 0, sellTurnover: 0, profitLoss: 0 };
-  //     }
-  //     groupedByStock[stockId].buyQty += stockQty;
-  //     groupedByStock[stockId].buyTurnover += netAmount;
-  //   });
-
-  //   // Process sells
-  //   sells.forEach((sell) => {
-  //     const { stockId, purchaseDate, stockQty, stockPurchasePrice } = sell;
-  //     const netAmount = stockQty * stockPurchasePrice;
-
-  //     // Calculate Profit/Loss (example: sell price - avg purchase price)
-  //     const avgPurchasePrice = groupedByStock[stockId]?.buyTurnover / groupedByStock[stockId]?.buyQty || 0;
-  //     const profitLoss = (stockPurchasePrice - avgPurchasePrice) * stockQty;
-
-  //     report.push({
-  //       stockId,
-  //       date: purchaseDate,
-  //       type: "SELL",
-  //       buyQty: 0,
-  //       sellQty: stockQty,
-  //       rate: stockPurchasePrice,
-  //       netAmount,
-  //       profitLoss,
-  //     });
-
-  //     // Update grouped data
-  //     groupedByStock[stockId].sellQty += stockQty;
-  //     groupedByStock[stockId].sellTurnover += netAmount;
-  //     groupedByStock[stockId].profitLoss += profitLoss;
-  //   });
-
-  //   // Add script-wise totals to report
-  //   Object.keys(groupedByStock).forEach((stockId) => {
-  //     const stockData = groupedByStock[stockId];
-  //     report.push({
-  //       stockId,
-  //       type: "TOTAL",
-  //       buyQty: stockData.buyQty,
-  //       sellQty: stockData.sellQty,
-  //       buyTurnover: stockData.buyTurnover,
-  //       sellTurnover: stockData.sellTurnover,
-  //       profitLoss: stockData.profitLoss,
-  //     });
-  //   });
-
-  //   res.json(report);
-  // } catch (error) {
-  //   res.status(500).json({ error: error.message });
-  // }
-})
+});
 
 export default router;

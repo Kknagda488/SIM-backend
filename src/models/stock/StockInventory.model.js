@@ -10,7 +10,7 @@ const StockInventorySchema = new Schema(
     transactionType: {
       type: String,
       required: true,
-      enum: ["Purchase", "Sell"], // Specifies the type of transaction
+      enum: ["Purchase", "Sell", "CarryForward", "BroughtForward"], // Specifies the type of transaction
     },
     stockId: {
       type: Schema.Types.ObjectId,
@@ -25,6 +25,11 @@ const StockInventorySchema = new Schema(
       type: Number,
       default: 0,
       min: [0, "Total purchased cannot be negative"],
+    },
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
     totalSold: {
       type: Number,
@@ -48,6 +53,11 @@ const StockInventorySchema = new Schema(
         },
         message: "Remaining stock cannot be negative",
       },
+    },
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
   },
   {

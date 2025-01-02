@@ -17,7 +17,7 @@ export const createSell = asyncHandler(async (req, res, next) => {
       return res.status(400).json(new ApiError(400, "All required fields must be provided"));
     }
 
-    const inventory = await StockInventory.findOne({ stockId });
+    const inventory = await StockInventory.findOne({ stockId, createdBy: req.user._id });
     if (!inventory || inventory.remaining < stockQty) {
       return res.status(400).json(new ApiError(400, "Insufficient stock available"));
     } 

@@ -10,7 +10,7 @@ purchaseRoutes.get("/:id", authMiddleware, getPurchaseById);
 purchaseRoutes.put("/:id", authMiddleware, updatePurchase)
 purchaseRoutes.delete("/:id", authMiddleware, deletePurchase)
 purchaseRoutes.get("/inventory/list", authMiddleware, inventoryList)
-purchaseRoutes.post("/profit-loss/list", profitLossReport)
+purchaseRoutes.get("/profit-loss/list",authMiddleware, profitLossReport)
 
 
 export default purchaseRoutes;
