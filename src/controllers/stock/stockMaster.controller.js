@@ -3,7 +3,7 @@ import { ApiError } from "../../utils/ApiError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 
-
+import stockData from "../../../stock_data.json"  assert { type: 'json' };
 
 export const createStockMaster = asyncHandler(async (req, res) => {
     let {stockName, stockUnit, remark} = req.body;
@@ -18,6 +18,28 @@ export const createStockMaster = asyncHandler(async (req, res) => {
 })
 
 
+export const createBulkStockMaster = asyncHandler(async (req, res) => {
+    let stocks = stockData.map((stock) => {
+        return {
+            stockName: stock.stockName,
+            stockUnit: stock.stockUnit,
+            remark: stock.remark,
+            createdBy: req.user._id,
+        }
+    })
+    await StockMaster.insertMany(stocks);
+    res.status(201).json(new ApiResponse(201, stocks, "Stocks created successfully"));
+})
+    // let {stockName, stockUnit, remark} = req.body;
+
+    // let isStockNameExist = await StockMaster.findOne({stockName});
+    // if(isStockNameExist){
+    //     return res.status(400).json(new ApiError(400, "Stock Name already exists"));
+    // }
+    // const stock = new StockMaster({stockName, stockUnit, remark, createdBy: req.user._id});
+    // await stock.save();
+    // res.status(201).json(new ApiResponse(201, stock, "Stock created successfully"));
+// })
 // Get All Stocks
 
 

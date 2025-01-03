@@ -108,7 +108,7 @@ export const getCfBfList = asyncHandler(async (req, res) => {
 
 export const carryForward = asyncHandler(async (req, res) => {
     const { items } = req.body; // Array of stock IDs
-    const userId = req.user._id; // Assumes user information is in the request object
+    const userId = req.user._id; // Assumes user inlocal().formation is in the request object
   
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res
@@ -268,10 +268,10 @@ export const stockTransaction = asyncHandler(async (req, res) => {
     stockId,
     purchaseDate: { $gte: startDate, $lte: endDate },
   });
-
+  // moment.utc(purchaseDate).local().format('DD-MM-YYYY HH:mm:ss');
   purchaseTransactions.forEach((purchase) => {
     transactions.push({
-      dateTime: moment(purchase.purchaseDate).format('DD-MM-YYYY HH:mm:ss'),
+      dateTime: moment.utc(purchase.purchaseDate).local().format('DD-MM-YYYY HH:mm:ss'),
       type: 'purchase',
       buyQty: purchase.stockQty,
       sellQty: '-',
@@ -288,7 +288,7 @@ export const stockTransaction = asyncHandler(async (req, res) => {
 
   sellTransactions.forEach((sell) => {
     transactions.push({
-      dateTime: moment(sell.salesDate).format('DD-MM-YYYY HH:mm:ss'),
+      dateTime: moment.utc(sell.salesDate).local().format('DD-MM-YYYY HH:mm:ss'),
       type: 'sell',
       buyQty: '-',
       sellQty: sell.stockQty,
@@ -305,7 +305,7 @@ export const stockTransaction = asyncHandler(async (req, res) => {
 
   carryForwardTransactions.forEach((cfbf) => {
     transactions.push({
-      dateTime: moment(cfbf.cFDate).format('DD-MM-YYYY HH:mm:ss'),
+      dateTime: moment.utc(cfbf.cFDate).local().format('DD-MM-YYYY HH:mm:ss'),
       type: 'cf',
       buyQty: '-',
       sellQty: cfbf.stockQty,
@@ -322,7 +322,7 @@ export const stockTransaction = asyncHandler(async (req, res) => {
 
   broughtForwardTransactions.forEach((cfbf) => {
     transactions.push({
-      dateTime: moment(cfbf.bFDate).format('DD-MM-YYYY HH:mm:ss'),
+      dateTime: moment.utc(cfbf.bFDate).local().format('DD-MM-YYYY HH:mm:ss'),
       type: 'bf',
       buyQty: cfbf.stockQty,
       sellQty: '-',
@@ -332,7 +332,7 @@ export const stockTransaction = asyncHandler(async (req, res) => {
   });
 
   // Sort all transactions by date
-//   transactions.sort((a, b) => moment(a.dateTime, 'DD-MM-YYYY HH:mm:ss').isBefore(moment(b.dateTime, 'DD-MM-YYYY HH:mm:ss')) ? -1 : 1);
+//   transactions.sort((a, b) => moment.utc(a.dateTime, 'DD-MM-YYYY HH:mm:ss').isBefore(moment(b.dateTime, 'DD-MM-YYYY HH:mm:ss')) ? -1 : 1);
 
   return res.status(200).json({
     status: 200,
