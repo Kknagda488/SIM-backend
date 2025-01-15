@@ -106,101 +106,184 @@ export const getCfBfList = asyncHandler(async (req, res) => {
 //     return res.status(201).json(new ApiResponse(201, savedCFBF, "CFBF record created successfully"))
 // })
 
+
+
 export const carryForward = asyncHandler(async (req, res) => {
-    const { items } = req.body; // Array of stock IDs
-    const userId = req.user._id; // Assumes user inlocal().formation is in the request object
-  
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res
-        .status(400)
-        .json(new ApiError(400, "Items array is required and cannot be empty"));
+  const { stockId } = req.params;
+  const { amount:carryForwardAmount } = req.body; // Amount to carry forward
+  const userId = req.user._id;
+
+  try {
+    // Check for pending carry-forward status
+    const existingPendingCF = await InventoryCFBF.findOne({
+      stockId,
+      status: "pending",
+    });
+
+    if (existingPendingCF) {
+      return res.status(400).json(
+        new ApiResponse(400, {
+          message: "Carry forward already exists for this stock in pending state"
+        })
+      );
     }
-  
-    const results = [];
-  
-    for (const stockId of items) {
-      // Check for pending carry-forward status for this stock
-      const existingPendingCF = await InventoryCFBF.findOne({
-        stockId,
-        status: "pending",
-      });
-  
-      if (existingPendingCF) {
-        results.push({
-          stockId,
-          status: "failed",
-          message: "Carry forward already exists for this stock in pending state",
-        });
-        continue;
-      }
-  
-      // Check if stock inventory exists with remaining quantity
-      const inventory = await StockInventory.findOne({
-        stockId,
-        remaining: { $gt: 0 },
-      });
-  
-      if (!inventory) {
-        results.push({
-          stockId,
-          status: "failed",
-          message: "No stock available to carry forward",
-        });
-        continue;
-      }
-  
-      // Fetch the last sell price for the stock
-      const lastSell = await Sell.findOne({ stockId })
-        .sort({ salesDate: -1 }) // Get the latest sell record
-        .select("stockSoldPrice");
-  
-      if (!lastSell) {
-        results.push({
-          stockId,
-          status: "failed",
-          message: "No sell record found for this stock",
-        });
-        continue;
-      }
-  
-      // Calculate the carry-forward amount using the last sell price
-      const cfAmount = lastSell.stockSoldPrice * inventory.remaining;
-  
-      // Create a carry-forward record
-      const newCFBF = new InventoryCFBF({
-        stockId,
-        cFDate: new Date(),
-        amount: cfAmount,
-        stockQty: inventory.remaining,
-        status: "pending", // Default status
-        createdBy: userId,
-      });
-  
-      try {
-        const savedCFBF = await newCFBF.save();
-  
-        // Optionally, update stock inventory (e.g., adjust remaining stock if required)
-        // inventory.remaining = 0; // Assuming all remaining stock is carried forward
-        await inventory.save();
-  
-        results.push({
-          stockId,
-          status: "success",
-          record: savedCFBF,
-        });
-      } catch (error) {
-        results.push({
-          stockId,
-          status: "failed",
-          message: error.message,
-        });
-      }
+
+    // Check if stock exists with sufficient remaining quantity
+    const inventory = await StockInventory.findOne({
+      stockId,
+      remaining: { $gt: 0 }
+    });
+
+    if (!inventory) {
+      return res.status(404).json(
+        new ApiResponse(404, {
+          message: "Insufficient stock available to carry forward"
+        })
+      );
     }
+
+
+    const cfAmount = carryForwardAmount * inventory.remaining;
   
-    return res
-      .status(200)
-      .json(new ApiResponse(200, results, "Carry forward process completed"));
-  });
+
+    // Create carry-forward record
+    const newCFBF = new InventoryCFBF({
+      stockId,
+      cFDate: new Date(),
+      amount: cfAmount,
+      stockQty: inventory.remaining,
+      status: "pending",
+      createdBy: userId,
+    });
+    try {
+      const savedCFBF = await newCFBF.save();
+
+      // Update inventory remaining quantity
+      await inventory.save();
+
+
+      return res.status(200).json(
+        new ApiResponse(200, savedCFBF, "Carry forward process completed")
+      );
+      
+    } catch (error) {
+      console.error(error)
+      return res.status(500).json(
+        new ApiResponse(500, {
+          message: "Error in carry forward process",
+          error: error.message
+        })
+      );
+    }
+
+  } catch (error) {
+    return res.status(500).json(
+      new ApiResponse(500, {
+        message: "Error in carry forward process",
+        error: error.message
+      })
+    );
+  }
+});
+
+
+
+
+// export const carryForward = asyncHandler(async (req, res) => {
+//     const { items } = req.body; // Array of stock IDs
+//     const userId = req.user._id; // Assumes user inlocal().formation is in the request object
+  
+//     if (!items || !Array.isArray(items) || items.length === 0) {
+//       return res
+//         .status(400)
+//         .json(new ApiError(400, "Items array is required and cannot be empty"));
+//     }
+  
+//     const results = [];
+  
+//     for (const stockId of items) {
+//       // Check for pending carry-forward status for this stock
+//       const existingPendingCF = await InventoryCFBF.findOne({
+//         stockId,
+//         status: "pending",
+//       });
+  
+//       if (existingPendingCF) {
+//         results.push({
+//           stockId,
+//           status: "failed",
+//           message: "Carry forward already exists for this stock in pending state",
+//         });
+//         continue;
+//       }
+  
+//       // Check if stock inventory exists with remaining quantity
+//       const inventory = await StockInventory.findOne({
+//         stockId,
+//         remaining: { $gt: 0 },
+//       });
+  
+//       if (!inventory) {
+//         results.push({
+//           stockId,
+//           status: "failed",
+//           message: "No stock available to carry forward",
+//         });
+//         continue;
+//       }
+  
+//       // Fetch the last sell price for the stock
+//       const lastSell = await Sell.findOne({ stockId })
+//         .sort({ salesDate: -1 }) // Get the latest sell record
+//         .select("stockSoldPrice");
+  
+//       if (!lastSell) {
+//         results.push({
+//           stockId,
+//           status: "failed",
+//           message: "No sell record found for this stock",
+//         });
+//         continue;
+//       }
+  
+//       // Calculate the carry-forward amount using the last sell price
+//       const cfAmount = lastSell.stockSoldPrice * inventory.remaining;
+  
+//       // Create a carry-forward record
+//       const newCFBF = new InventoryCFBF({
+//         stockId,
+//         cFDate: new Date(),
+//         amount: cfAmount,
+//         stockQty: inventory.remaining,
+//         status: "pending", // Default status
+//         createdBy: userId,
+//       });
+  
+//       try {
+//         const savedCFBF = await newCFBF.save();
+  
+//         // Optionally, update stock inventory (e.g., adjust remaining stock if required)
+//         // inventory.remaining = 0; // Assuming all remaining stock is carried forward
+//         await inventory.save();
+  
+//         results.push({
+//           stockId,
+//           status: "success",
+//           record: savedCFBF,
+//         });
+//       } catch (error) {
+//         results.push({
+//           stockId,
+//           status: "failed",
+//           message: error.message,
+//         });
+//       }
+//     }
+  
+//     return res
+//       .status(200)
+//       .json(new ApiResponse(200, results, "Carry forward process completed"));
+//   });
 
 
 

@@ -6,7 +6,7 @@ const cfbfRoutes = express.Router()
 
 
 cfbfRoutes.get("/inventory",authMiddleware, getCfBfList)
-cfbfRoutes.post("/carry-forward", authMiddleware, carryForward)
+cfbfRoutes.post("/carry-forward/:stockId", authMiddleware, carryForward)
 cfbfRoutes.post("/brought-forward/:stockId", authMiddleware, broughtForward)
 cfbfRoutes.get("/stock-transaction/:stockId", authMiddleware, stockTransaction)
 cfbfRoutes.get("/getStats", authMiddleware, getStats)
