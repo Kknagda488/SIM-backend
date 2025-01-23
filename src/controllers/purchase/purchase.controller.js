@@ -71,67 +71,6 @@ const router = express.Router();
 // });
 
 
-export const createPurchase = asyncHandler(async (req, res, next) => {
-  try {
-    const { stockId, stockQty, purchaseDate, stockPurchasePrice, remarks } = req.body;
-
-    // Validate input
-    if (!stockId || !stockQty || !stockPurchasePrice || !purchaseDate) {
-      return res.status(400).json(
-        new ApiError(400, "All required fields must be provided")
-      );
-    }
-
-    // Start transaction
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      // Create purchase record
-      const newPurchase = new Purchase({
-        stockId,
-        purchaseDate: new Date(purchaseDate),
-        createdBy: req.user._id,
-        stockQty,
-        stockPurchasePrice,
-        remarks,
-        netTotal: (stockQty * stockPurchasePrice).toFixed(2),
-      });
-
-      const savedPurchase = await newPurchase.save({ session });
-
-      // Create a new inventory entry for each purchase
-      const newInventoryEntry = new StockInventory({
-        transactionId: savedPurchase._id,
-        transactionType: "Purchase",
-        createdBy: req.user._id,
-        stockId,
-        date: new Date(purchaseDate),
-        totalPurchased: stockQty,
-        totalSold: 0,
-        remaining: stockQty,
-      });
-
-      await newInventoryEntry.save({ session });
-
-      // Commit the transaction
-      await session.commitTransaction();
-
-      return res.status(201).json(
-        new ApiResponse(201, savedPurchase, "Purchase created successfully")
-      );
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
-    }
-  } catch (error) {
-    next(error);
-  }
-});
-
-
 // export const createPurchase = asyncHandler(async (req, res, next) => {
 //   try {
 //     const { stockId, stockQty, purchaseDate, stockPurchasePrice, remarks } = req.body;
@@ -161,29 +100,21 @@ export const createPurchase = asyncHandler(async (req, res, next) => {
 
 //       const savedPurchase = await newPurchase.save({ session });
 
-//       // Update or create inventory
-//       let inventory = await StockInventory.findOne({ 
-//         stockId, 
-//         createdBy: req.user._id 
+//       // Create a new inventory entry for each purchase
+//       const newInventoryEntry = new StockInventory({
+//         transactionId: savedPurchase._id,
+//         transactionType: "Purchase",
+//         createdBy: req.user._id,
+//         stockId,
+//         date: new Date(purchaseDate),
+//         totalPurchased: stockQty,
+//         totalSold: 0,
+//         remaining: stockQty,
 //       });
 
-//       if (inventory) {
-//         inventory.totalPurchased += parseInt(stockQty);
-//         inventory.remaining += parseInt(stockQty);
-//       } else {
-//         inventory = new StockInventory({
-//           transactionId: savedPurchase._id,
-//           transactionType: "Purchase",
-//           createdBy: req.user._id,
-//           stockId,
-//           date: new Date(purchaseDate),
-//           totalPurchased: stockQty,
-//           totalSold: 0,
-//           remaining: stockQty,
-//         });
-//       }
+//       await newInventoryEntry.save({ session });
 
-//       await inventory.save({ session });
+//       // Commit the transaction
 //       await session.commitTransaction();
 
 //       return res.status(201).json(
@@ -199,6 +130,75 @@ export const createPurchase = asyncHandler(async (req, res, next) => {
 //     next(error);
 //   }
 // });
+
+
+export const createPurchase = asyncHandler(async (req, res, next) => {
+  try {
+    const { stockId, stockQty, purchaseDate, stockPurchasePrice, remarks } = req.body;
+
+    // Validate input
+    if (!stockId || !stockQty || !stockPurchasePrice || !purchaseDate) {
+      return res.status(400).json(
+        new ApiError(400, "All required fields must be provided")
+      );
+    }
+
+    // Start transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Create purchase record
+      const newPurchase = new Purchase({
+        stockId,
+        purchaseDate: new Date(purchaseDate),
+        createdBy: req.user._id,
+        stockQty,
+        stockPurchasePrice,
+        remarks,
+        netTotal: (stockQty * stockPurchasePrice).toFixed(2),
+      });
+
+      const savedPurchase = await newPurchase.save({ session });
+
+      // Update or create inventory
+      let inventory = await StockInventory.findOne({ 
+        stockId, 
+        createdBy: req.user._id 
+      });
+
+      if (inventory) {
+        inventory.totalPurchased += parseInt(stockQty);
+        inventory.remaining += parseInt(stockQty);
+      } else {
+        inventory = new StockInventory({
+          transactionId: savedPurchase._id,
+          transactionType: "Purchase",
+          createdBy: req.user._id,
+          stockId,
+          date: new Date(purchaseDate),
+          totalPurchased: stockQty,
+          totalSold: 0,
+          remaining: stockQty,
+        });
+      }
+
+      await inventory.save({ session });
+      await session.commitTransaction();
+
+      return res.status(201).json(
+        new ApiResponse(201, savedPurchase, "Purchase created successfully")
+      );
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  } catch (error) {
+    next(error);
+  }
+});
 
 // { stockName: 'Apple Inc.', stockQty: 150, purchasePrice: 120, total: 18000, remarks: 'Tech leader' },
 
@@ -1113,24 +1113,218 @@ export const deletePurchase = asyncHandler(async (req, res, next) => {
 
 
 
+// export const profitLossReport = asyncHandler(async (req, res, next) => {
+//   try {
+//     const { startDate, endDate } = req.query;
+
+//     // Validate date parameters
+//     if (!startDate || !endDate) {
+//       return res.status(400).json(
+//         new ApiError(400, "Start date and end date are required")
+//       );
+//     }
+
+//     // Date filters
+//     const dateFilter = {
+//       purchaseDate: {
+//         $gte: new Date(startDate),
+//         $lte: new Date(endDate),
+//       },
+//       createdBy: req.user._id
+//     };
+
+//     const salesDateFilter = {
+//       salesDate: {
+//         $gte: new Date(startDate),
+//         $lte: new Date(endDate),
+//       },
+//       createdBy: req.user._id
+//     };
+
+//     // Fetch data with populated stock details
+//     const [purchases, sells, inventoryCFBF] = await Promise.all([
+//       Purchase.find(dateFilter).lean().populate('stockId'),
+//       Sell.find(salesDateFilter).lean().populate('stockId'),
+//       InventoryCFBFModel.find({
+//         $or: [
+//           { cFDate: { $gte: startDate, $lte: endDate } },
+//           { bFDate: { $gte: startDate, $lte: endDate } }
+//         ],
+//         createdBy: req.user._id
+//       }).lean().populate('stockId')
+//     ]);
+
+//     // Initialize stock-wise report object
+//     const stockReport = {};
+
+//     // Process brought forward entries
+//     inventoryCFBF.forEach(entry => {
+//       const stockKey = entry.stockId._id.toString();
+//       if (!stockReport[stockKey]) {
+//         initializeStockReport(stockReport, stockKey, entry.stockId.stockName);
+//       }
+      
+//       if (entry.bFDate) {
+//         stockReport[stockKey].openingBalance += entry.stockQty;
+//         stockReport[stockKey].openingValue += entry.amount;
+//       }
+//     });
+
+//     // Process purchases
+//     purchases.forEach(purchase => {
+//       const stockKey = purchase.stockId._id.toString();
+//       if (!stockReport[stockKey]) {
+//         initializeStockReport(stockReport, stockKey, purchase.stockId.stockName);
+//       }
+
+//       const report = stockReport[stockKey];
+//       report.totalPurchaseQty += purchase.stockQty;
+//       report.totalPurchaseValue += purchase.stockQty * purchase.stockPurchasePrice;
+//       report.transactions.push({
+//         date: purchase.purchaseDate,
+//         type: 'Purchase',
+//         quantity: purchase.stockQty,
+//         rate: purchase.stockPurchasePrice,
+//         value: purchase.stockQty * purchase.stockPurchasePrice
+//       });
+//     });
+
+//     // Process sales
+//     sells.forEach(sell => {
+//       const stockKey = sell.stockId._id.toString();
+//       if (!stockReport[stockKey]) {
+//         initializeStockReport(stockReport, stockKey, sell.stockId.stockName);
+//       }
+
+//       const report = stockReport[stockKey];
+//       report.totalSaleQty += sell.stockQty;
+//       report.totalSaleValue += sell.stockQty * sell.stockSoldPrice;
+//       report.transactions.push({
+//         date: sell.salesDate,
+//         type: 'Sale',
+//         quantity: sell.stockQty,
+//         rate: sell.stockSoldPrice,
+//         value: sell.stockQty * sell.stockSoldPrice
+//       });
+//     });
+
+//     // Process carry forward entries
+//     inventoryCFBF.forEach(entry => {
+//       const stockKey = entry.stockId._id.toString();
+//       if (entry.cFDate) {
+//         stockReport[stockKey].closingBalance += entry.stockQty;
+//         stockReport[stockKey].closingValue += entry.amount;
+//       }
+//     });
+
+//     // Calculate final metrics for each stock
+//     const finalReport = Object.values(stockReport).map(stock => {
+//       // Calculate averages
+//       stock.avgPurchaseRate = stock.totalPurchaseQty > 0 
+//         ? (stock.totalPurchaseValue / stock.totalPurchaseQty).toFixed(2) 
+//         : 0;
+      
+//       stock.avgSaleRate = stock.totalSaleQty > 0 
+//         ? (stock.totalSaleValue / stock.totalSaleQty).toFixed(2) 
+//         : 0;
+
+//       // Calculate profit/loss
+//       stock.profitLoss = (stock.totalSaleValue - 
+//         ((stock.totalSaleQty * stock.totalPurchaseValue) / stock.totalPurchaseQty)).toFixed(2);
+
+//       // Calculate turnover
+//       stock.turnover = ((stock.totalSaleValue / stock.totalPurchaseValue) * 100).toFixed(2);
+
+//       // Sort transactions by date
+//       stock.transactions.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+//       return {
+//         stockName: stock.stockName,
+//         openingBalance: stock.openingBalance,
+//         openingValue: parseFloat(stock.openingValue.toFixed(2)),
+//         totalPurchaseQty: stock.totalPurchaseQty,
+//         totalPurchaseValue: parseFloat(stock.totalPurchaseValue.toFixed(2)),
+//         avgPurchaseRate: parseFloat(stock.avgPurchaseRate),
+//         totalSaleQty: stock.totalSaleQty,
+//         totalSaleValue: parseFloat(stock.totalSaleValue.toFixed(2)),
+//         avgSaleRate: parseFloat(stock.avgSaleRate),
+//         closingBalance: stock.closingBalance,
+//         closingValue: parseFloat(stock.closingValue.toFixed(2)),
+//         profitLoss: parseFloat(stock.profitLoss),
+//         turnover: parseFloat(stock.turnover),
+//         transactions: stock.transactions
+//       };
+//     });
+
+//     // Calculate summary
+//     const summary = calculateSummary(finalReport);
+
+//     return res.status(200).json(
+//       new ApiResponse(200, {
+//         report: finalReport,
+//         summary: summary
+//       }, "Profit/Loss report generated successfully")
+//     );
+
+//   } catch (error) {
+//     next(error);
+//   }
+// });
+
+// // Helper function to initialize stock report object
+// function initializeStockReport(stockReport, stockKey, stockName) {
+//   stockReport[stockKey] = {
+//     stockName,
+//     openingBalance: 0,
+//     openingValue: 0,
+//     totalPurchaseQty: 0,
+//     totalPurchaseValue: 0,
+//     totalSaleQty: 0,
+//     totalSaleValue: 0,
+//     closingBalance: 0,
+//     closingValue: 0,
+//     transactions: []
+//   };
+// }
+
+// // Helper function to calculate summary
+// function calculateSummary(report) {
+//   return report.reduce((acc, stock) => {
+//     return {
+//       totalOpeningBalance: (acc.totalOpeningBalance || 0) + stock.openingBalance,
+//       totalOpeningValue: (acc.totalOpeningValue || 0) + stock.openingValue,
+//       totalPurchaseQty: (acc.totalPurchaseQty || 0) + stock.totalPurchaseQty,
+//       totalPurchaseValue: (acc.totalPurchaseValue || 0) + stock.totalPurchaseValue,
+//       totalSaleQty: (acc.totalSaleQty || 0) + stock.totalSaleQty,
+//       totalSaleValue: (acc.totalSaleValue || 0) + stock.totalSaleValue,
+//       totalClosingBalance: (acc.totalClosingBalance || 0) + stock.closingBalance,
+//       totalClosingValue: (acc.totalClosingValue || 0) + stock.closingValue,
+//       totalProfitLoss: (acc.totalProfitLoss || 0) + stock.profitLoss
+//     };
+//   }, {});
+// }
+
 export const profitLossReport = asyncHandler(async (req, res, next) => {
   try {
+    console.log("Profit/Loss report requested");
+
     const { startDate, endDate } = req.query;
 
     // Validate date parameters
     if (!startDate || !endDate) {
-      return res.status(400).json(
-        new ApiError(400, "Start date and end date are required")
-      );
+      return res.status(400).json({
+        statusCode: 400,
+        message: "Start date and end date are required",
+      });
     }
 
-    // Date filters
+    // Create date range filter for purchases and sales
     const dateFilter = {
       purchaseDate: {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
       },
-      createdBy: req.user._id
+      createdBy: req.user._id,
     };
 
     const salesDateFilter = {
@@ -1138,172 +1332,177 @@ export const profitLossReport = asyncHandler(async (req, res, next) => {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
       },
-      createdBy: req.user._id
+      createdBy: req.user._id,
     };
 
-    // Fetch data with populated stock details
-    const [purchases, sells, inventoryCFBF] = await Promise.all([
-      Purchase.find(dateFilter).lean().populate('stockId'),
-      Sell.find(salesDateFilter).lean().populate('stockId'),
-      InventoryCFBFModel.find({
-        $or: [
-          { cFDate: { $gte: startDate, $lte: endDate } },
-          { bFDate: { $gte: startDate, $lte: endDate } }
-        ],
-        createdBy: req.user._id
-      }).lean().populate('stockId')
-    ]);
+    // Fetch purchases, sells, and carry-forward data
+    const purchases = await Purchase.find(dateFilter).lean().populate("stockId");
+    const sells = await Sell.find(salesDateFilter).lean().populate("stockId");
+    const carryForwardRecords = await InventoryCFBFModel.find({
+      createdBy: req.user._id,
+      cFDate: { $lte: new Date(endDate) }, // Include carry-forwards up to the end date
+    }).populate("stockId");
 
-    // Initialize stock-wise report object
+    // Initialize object to store stock-wise data
     const stockReport = {};
 
-    // Process brought forward entries
-    inventoryCFBF.forEach(entry => {
-      const stockKey = entry.stockId._id.toString();
-      if (!stockReport[stockKey]) {
-        initializeStockReport(stockReport, stockKey, entry.stockId.stockName);
-      }
-      
-      if (entry.bFDate) {
-        stockReport[stockKey].openingBalance += entry.stockQty;
-        stockReport[stockKey].openingValue += entry.amount;
-      }
-    });
-
     // Process purchases
-    purchases.forEach(purchase => {
-      const stockKey = purchase.stockId._id.toString();
+    purchases.forEach((purchase) => {
+      const { stockId, stockQty, stockPurchasePrice } = purchase;
+      const stockKey = stockId._id;
+
       if (!stockReport[stockKey]) {
-        initializeStockReport(stockReport, stockKey, purchase.stockId.stockName);
+        stockReport[stockKey] = {
+          stockName: stockId.stockName,
+          totalBuyQty: 0,
+          totalSellQty: 0,
+          totalBuyAmount: 0,
+          totalSellAmount: 0,
+          avgBuyPrice: 0,
+          avgSellPrice: 0,
+          remingStock: 0,
+          carryForwardPrice: 0,
+          netAmount: 0,
+          profitLoss: 0,
+        };
       }
 
-      const report = stockReport[stockKey];
-      report.totalPurchaseQty += purchase.stockQty;
-      report.totalPurchaseValue += purchase.stockQty * purchase.stockPurchasePrice;
-      report.transactions.push({
-        date: purchase.purchaseDate,
-        type: 'Purchase',
-        quantity: purchase.stockQty,
-        rate: purchase.stockPurchasePrice,
-        value: purchase.stockQty * purchase.stockPurchasePrice
-      });
+      stockReport[stockKey].totalBuyQty += stockQty;
+      stockReport[stockKey].totalBuyAmount += stockQty * stockPurchasePrice;
     });
 
-    // Process sales
-    sells.forEach(sell => {
-      const stockKey = sell.stockId._id.toString();
+    // Process carry-forward records
+    carryForwardRecords.forEach((cfRecord) => {
+      const { stockId, amount } = cfRecord;
+      const stockKey = stockId._id;
+
       if (!stockReport[stockKey]) {
-        initializeStockReport(stockReport, stockKey, sell.stockId.stockName);
+        stockReport[stockKey] = {
+          stockName: stockId.stockName,
+          totalBuyQty: 0,
+          totalSellQty: 0,
+          totalBuyAmount: 0,
+          totalSellAmount: 0,
+          avgBuyPrice: 0,
+          avgSellPrice: 0,
+          remingStock: 0,
+          carryForwardPrice: 0,
+          netAmount: 0,
+          profitLoss: 0,
+        };
       }
 
-      const report = stockReport[stockKey];
-      report.totalSaleQty += sell.stockQty;
-      report.totalSaleValue += sell.stockQty * sell.stockSoldPrice;
-      report.transactions.push({
-        date: sell.salesDate,
-        type: 'Sale',
-        quantity: sell.stockQty,
-        rate: sell.stockSoldPrice,
-        value: sell.stockQty * sell.stockSoldPrice
-      });
+      // Add carry-forward amount
+      stockReport[stockKey].carryForwardPrice += amount;
     });
 
-    // Process carry forward entries
-    inventoryCFBF.forEach(entry => {
-      const stockKey = entry.stockId._id.toString();
-      if (entry.cFDate) {
-        stockReport[stockKey].closingBalance += entry.stockQty;
-        stockReport[stockKey].closingValue += entry.amount;
+    // Calculate average buy price for each stock
+    Object.values(stockReport).forEach((stock) => {
+      stock.avgBuyPrice =
+        stock.totalBuyQty > 0
+          ? parseFloat((stock.totalBuyAmount / stock.totalBuyQty).toFixed(2))
+          : 0;
+    });
+
+    // Process sells
+    sells.forEach((sell) => {
+      const { stockId, stockQty, stockSoldPrice } = sell;
+      const stockKey = stockId._id.toString();
+
+      if (stockReport[stockKey]) {
+        stockReport[stockKey].totalSellQty += stockQty;
+        stockReport[stockKey].totalSellAmount += stockQty * stockSoldPrice;
       }
     });
 
     // Calculate final metrics for each stock
-    const finalReport = Object.values(stockReport).map(stock => {
-      // Calculate averages
-      stock.avgPurchaseRate = stock.totalPurchaseQty > 0 
-        ? (stock.totalPurchaseValue / stock.totalPurchaseQty).toFixed(2) 
-        : 0;
-      
-      stock.avgSaleRate = stock.totalSaleQty > 0 
-        ? (stock.totalSaleValue / stock.totalSaleQty).toFixed(2) 
-        : 0;
+    const finalReport = Object.values(stockReport).map((stock) => {
+      // Calculate average sell price
+      stock.avgSellPrice =
+        stock.totalSellQty > 0
+          ? parseFloat((stock.totalSellAmount / stock.totalSellQty).toFixed(2))
+          : 0;
+
+      // Calculate remaining stock
+      stock.remingStock = stock.totalBuyQty - stock.totalSellQty;
+
+      // Calculate net amount (total buy amount - total sell amount)
+      stock.netAmount = parseFloat(
+        (stock.totalBuyAmount - stock.totalSellAmount).toFixed(2)
+      );
 
       // Calculate profit/loss
-      stock.profitLoss = (stock.totalSaleValue - 
-        ((stock.totalSaleQty * stock.totalPurchaseValue) / stock.totalPurchaseQty)).toFixed(2);
+      stock.profitLoss = parseFloat(
+        (
+          stock.avgSellPrice * stock.totalSellQty -
+          stock.avgBuyPrice * stock.totalSellQty
+        ).toFixed(2)
+      );
 
-      // Calculate turnover
-      stock.turnover = ((stock.totalSaleValue / stock.totalPurchaseValue) * 100).toFixed(2);
-
-      // Sort transactions by date
-      stock.transactions.sort((a, b) => new Date(a.date) - new Date(b.date));
+      // Format amounts
+      stock.totalBuyAmount = parseFloat(stock.totalBuyAmount.toFixed(2));
+      stock.totalSellAmount = parseFloat(stock.totalSellAmount.toFixed(2));
 
       return {
         stockName: stock.stockName,
-        openingBalance: stock.openingBalance,
-        openingValue: parseFloat(stock.openingValue.toFixed(2)),
-        totalPurchaseQty: stock.totalPurchaseQty,
-        totalPurchaseValue: parseFloat(stock.totalPurchaseValue.toFixed(2)),
-        avgPurchaseRate: parseFloat(stock.avgPurchaseRate),
-        totalSaleQty: stock.totalSaleQty,
-        totalSaleValue: parseFloat(stock.totalSaleValue.toFixed(2)),
-        avgSaleRate: parseFloat(stock.avgSaleRate),
-        closingBalance: stock.closingBalance,
-        closingValue: parseFloat(stock.closingValue.toFixed(2)),
-        profitLoss: parseFloat(stock.profitLoss),
-        turnover: parseFloat(stock.turnover),
-        transactions: stock.transactions
+        totalBuyQty: stock.totalBuyQty,
+        totalSellQty: stock.totalSellQty,
+        avgBuyPrice: stock.avgBuyPrice,
+        avgSellPrice: stock.avgSellPrice,
+        buyAmount: stock.totalBuyAmount,
+        sellAmount: stock.totalSellAmount,
+        remingStock: stock.remingStock,
+        carryForwardPrice: parseFloat(stock.carryForwardPrice.toFixed(2)), // Include carry forward price
+        netAmount: stock.netAmount,
+        profitLoss: stock.profitLoss,
       };
     });
 
-    // Calculate summary
-    const summary = calculateSummary(finalReport);
-
-    return res.status(200).json(
-      new ApiResponse(200, {
-        report: finalReport,
-        summary: summary
-      }, "Profit/Loss report generated successfully")
+    // Calculate overall summary
+    const summary = finalReport.reduce(
+      (acc, stock) => {
+        return {
+          totalBuyQty: acc.totalBuyQty + stock.totalBuyQty,
+          totalSellQty: acc.totalSellQty + stock.totalSellQty,
+          totalBuyAmount: acc.totalBuyAmount + stock.buyAmount,
+          totalSellAmount: acc.totalSellAmount + stock.sellAmount,
+          totalCarryForwardPrice:
+            acc.totalCarryForwardPrice + stock.carryForwardPrice,
+          totalProfitLoss: acc.totalProfitLoss + stock.profitLoss,
+        };
+      },
+      {
+        totalBuyQty: 0,
+        totalSellQty: 0,
+        totalBuyAmount: 0,
+        totalSellAmount: 0,
+        totalCarryForwardPrice: 0,
+        totalProfitLoss: 0,
+      }
     );
 
+    // Format summary numbers
+    Object.keys(summary).forEach((key) => {
+      if (typeof summary[key] === "number") {
+        summary[key] = parseFloat(summary[key].toFixed(2));
+      }
+    });
+
+    res.json({
+      statusCode: 200,
+      message: "Report generated successfully",
+      data: finalReport,
+      summary: summary,
+    });
   } catch (error) {
-    next(error);
+    console.error("Error generating profit/loss report:", error);
+    res.status(500).json({
+      statusCode: 500,
+      message: "Failed to generate report",
+      error: error.message,
+    });
   }
 });
-
-// Helper function to initialize stock report object
-function initializeStockReport(stockReport, stockKey, stockName) {
-  stockReport[stockKey] = {
-    stockName,
-    openingBalance: 0,
-    openingValue: 0,
-    totalPurchaseQty: 0,
-    totalPurchaseValue: 0,
-    totalSaleQty: 0,
-    totalSaleValue: 0,
-    closingBalance: 0,
-    closingValue: 0,
-    transactions: []
-  };
-}
-
-// Helper function to calculate summary
-function calculateSummary(report) {
-  return report.reduce((acc, stock) => {
-    return {
-      totalOpeningBalance: (acc.totalOpeningBalance || 0) + stock.openingBalance,
-      totalOpeningValue: (acc.totalOpeningValue || 0) + stock.openingValue,
-      totalPurchaseQty: (acc.totalPurchaseQty || 0) + stock.totalPurchaseQty,
-      totalPurchaseValue: (acc.totalPurchaseValue || 0) + stock.totalPurchaseValue,
-      totalSaleQty: (acc.totalSaleQty || 0) + stock.totalSaleQty,
-      totalSaleValue: (acc.totalSaleValue || 0) + stock.totalSaleValue,
-      totalClosingBalance: (acc.totalClosingBalance || 0) + stock.closingBalance,
-      totalClosingValue: (acc.totalClosingValue || 0) + stock.closingValue,
-      totalProfitLoss: (acc.totalProfitLoss || 0) + stock.profitLoss
-    };
-  }, {});
-}
-
 
 
 // export const profitLossReport = asyncHandler(async (req, res, next) => {
@@ -1420,6 +1619,7 @@ function calculateSummary(report) {
 //         buyAmount: stock.totalBuyAmount,
 //         sellAmount: stock.totalSellAmount,
 //         remingStock: stock.remingStock,
+//         carryFowardPrice: // to be calcuate 
 //         netAmount: stock.netAmount,
 //         profitLoss: stock.profitLoss
 //       };
