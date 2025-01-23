@@ -9,44 +9,144 @@ import { asyncHandler } from "../../utils/asyncHandler.js";
 const router = express.Router();
 
 // POST: Create a new sell
+
+// export const createSell = asyncHandler(async (req, res, next) => {
+//   try {
+//     const { stockId, stockQty, salesDate, stockSoldPrice, remarks } = req.body;
+
+//     // Validate input
+//     if (!stockId || !stockQty || !stockSoldPrice || !salesDate) {
+//       return res.status(400).json(
+//         new ApiError(400, "All required fields must be provided")
+//       );
+//     }
+
+//     const session = await mongoose.startSession();
+//     session.startTransaction();
+
+//     try {
+//       // Check available stock with FIFO logic
+//       const inventory = await StockInventory.findOne({ 
+//         stockId, 
+//         createdBy: req.user._id,
+//         remaining: { $gte: stockQty }
+//       });
+
+//       if (!inventory) {
+//         throw new ApiError(400, "Insufficient stock available");
+//       }
+
+//       // Create sell record
+//       const newSell = new Sell({
+//         stockId,
+//         salesDate: new Date(salesDate),
+//         createdBy: req.user._id,
+//         stockQty,
+//         stockSoldPrice,
+//         remarks,
+//         netTotal: (stockQty * stockSoldPrice).toFixed(2),
+//       });
+
+//       const savedSell = await newSell.save({ session });
+
+//       // Update inventory
+//       inventory.totalSold += parseInt(stockQty);
+//       inventory.remaining -= parseInt(stockQty);
+//       await inventory.save({ session });
+
+//       await session.commitTransaction();
+
+//       return res.status(201).json(
+//         new ApiResponse(201, savedSell, "Sell created successfully")
+//       );
+//     } catch (error) {
+//       await session.abortTransaction();
+//       throw error;
+//     } finally {
+//       session.endSession();
+//     }
+//   } catch (error) {
+//     next(error);
+//   }
+// });
+
 export const createSell = asyncHandler(async (req, res, next) => {
   try {
-    const { stockId, stockQty,salesDate, stockSoldPrice, remarks } = req.body;
+    const { stockId, stockQty, salesDate, stockSoldPrice, remarks } = req.body;
 
-    if (!stockId || !stockQty || !stockSoldPrice) {
-      return res.status(400).json(new ApiError(400, "All required fields must be provided"));
+    // Validate input
+    if (!stockId || !stockQty || !stockSoldPrice || !salesDate) {
+      return res.status(400).json(
+        new ApiError(400, "All required fields must be provided")
+      );
     }
 
-    const inventory = await StockInventory.findOne({ stockId, createdBy: req.user._id });
-    if (!inventory || inventory.remaining < stockQty) {
-      return res.status(400).json(new ApiError(400, "Insufficient stock available"));
-    } 
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    const newSell = new Sell({
-      stockId,
-      salesDate,
-      createdBy: req.user._id,
-      stockQty,
-      stockSoldPrice:stockSoldPrice,
-      remarks,
-      netTotal: (stockQty * stockSoldPrice).toFixed(2),
-    });
+    try {
+      // Find inventory records for the given stock, sorted by earliest date (FIFO)
+      let remainingQty = stockQty;
+      const inventories = await StockInventory.find({
+        stockId,
+        createdBy: req.user._id,
+        remaining: { $gt: 0 },
+      })
+        .sort({ date: 1 }) // FIFO: process older stock first
+        .session(session);
 
-    const savedSell = await newSell.save();
+      if (!inventories.length) {
+        throw new ApiError(400, "Insufficient stock available");
+      }
 
+      const inventoryUpdates = [];
+      for (const inventory of inventories) {
+        if (remainingQty <= 0) break;
 
+        const deductQty = Math.min(inventory.remaining, remainingQty);
+        inventory.remaining -= deductQty;
+        inventory.totalSold += deductQty;
+        inventoryUpdates.push(inventory.save({ session }));
 
-    inventory.totalSold += stockQty;
-    inventory.remaining -= stockQty;
-    await inventory.save();
+        remainingQty -= deductQty;
+      }
 
-    return res
-      .status(201)
-      .json(new ApiResponse(201, savedSell, "Sell created successfully"));
+      if (remainingQty > 0) {
+        throw new ApiError(400, "Insufficient stock available to complete the sale");
+      }
+
+      // Create sell record
+      const newSell = new Sell({
+        stockId,
+        salesDate: new Date(salesDate),
+        createdBy: req.user._id,
+        stockQty,
+        stockSoldPrice,
+        remarks,
+        netTotal: (stockQty * stockSoldPrice).toFixed(2),
+      });
+
+      const savedSell = await newSell.save({ session });
+
+      // Apply inventory updates
+      await Promise.all(inventoryUpdates);
+
+      await session.commitTransaction();
+
+      return res.status(201).json(
+        new ApiResponse(201, savedSell, "Sell created successfully")
+      );
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
   } catch (error) {
     next(error);
   }
 });
+
 
 // GET: Retrieve a single sell by ID
 export const getSellById = asyncHandler(async (req, res, next) => {
@@ -108,6 +208,51 @@ export const sellsList = asyncHandler(async (req, res, next) => {
   }
 });
 // PUT: Update a sell by ID
+// export const updateSell = asyncHandler(async (req, res, next) => {
+//   try {
+//     const { id } = req.params;
+//     const { stockId, stockQty, stockSoldPrice, remarks } = req.body;
+
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       return res.status(400).json(new ApiError(400, "Invalid sell ID"));
+//     }
+
+//     const sell = await Sell.findById(id);
+//     if (!sell) {
+//       return res.status(404).json(new ApiError(404, "Sell not found"));
+//     }
+
+//     const inventory = await StockInventory.findOne({ stockId: sell.stockId });
+//     if (!inventory) {
+//       return res.status(404).json(new ApiError(404, "Inventory record not found"));
+//     }
+
+//     const originalQty = sell.stockQty;
+
+//     if (stockQty && stockQty - originalQty > inventory.remaining) {
+//       return res.status(400).json(new ApiError(400, "Insufficient stock available for update"));
+//     }
+
+//     sell.stockId = stockId || sell.stockId;
+//     sell.stockQty = stockQty || sell.stockQty;
+//     sell.stockSoldPrice = stockSoldPrice || sell.stockSoldPrice;
+//     sell.remarks = remarks || sell.remarks;
+//     sell.totalAmount = (sell.stockQty * sell.stockSoldPrice).toFixed(2);
+
+//     const updatedSell = await sell.save();
+
+//     inventory.totalSold += (updatedSell.stockQty - originalQty);
+//     inventory.remaining -= (updatedSell.stockQty - originalQty);
+//     await inventory.save();
+
+//     return res
+//       .status(200)
+//       .json(new ApiResponse(200, updatedSell, "Sell updated successfully"));
+//   } catch (error) {
+//     next(error);
+//   }
+// });
+
 export const updateSell = asyncHandler(async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -182,6 +327,8 @@ export const updateSell = asyncHandler(async (req, res, next) => {
 //   }
 // });
 
+
+
 export const deleteSell = asyncHandler(async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -191,33 +338,89 @@ export const deleteSell = asyncHandler(async (req, res, next) => {
       return res.status(400).json(new ApiError(400, "Invalid sell ID"));
     }
 
-    // Find the sell record
-    const sell = await Sell.findById(id);
-    if (!sell) {
-      return res.status(404).json(new ApiError(404, "Sell not found"));
+    // Start transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Find the sell record
+      const sell = await Sell.findById(id).session(session);
+      if (!sell) {
+        return res.status(404).json(new ApiError(404, "Sell not found"));
+      }
+
+      // Find the related inventory record
+      const inventory = await StockInventory.findOne({ 
+        stockId: sell.stockId, 
+        createdBy: req.user._id 
+      }).session(session);
+
+      if (!inventory) {
+        throw new ApiError(404, "Inventory record not found");
+      }
+
+      // Update inventory
+      inventory.totalSold = Math.max(0, inventory.totalSold - sell.stockQty); // Prevent negative totalSold
+      inventory.remaining += sell.stockQty; // Add back the sold quantity
+      await inventory.save({ session });
+
+      // Delete the sell record
+      await sell.deleteOne({ session });
+
+      // Commit transaction
+      await session.commitTransaction();
+
+      return res
+        .status(200)
+        .json(new ApiResponse(200, null, "Sell deleted successfully"));
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
-
-    // Find the inventory record related to the sell
-    const inventory = await StockInventory.findOne({ stockId: sell.stockId });
-    if (!inventory) {
-      return res.status(404).json(new ApiError(404, "Inventory record not found"));
-    }
-
-    // Update inventory before deleting the sell
-    inventory.totalSold = Math.max(0, inventory.totalSold - sell.stockQty); // Prevent negative totalSold
-    inventory.remaining += sell.stockQty; // Add back the sold quantity
-    await inventory.save();
-
-    // Delete the sell record
-    await sell.deleteOne();
-
-    return res
-      .status(200)
-      .json(new ApiResponse(200, null, "Sell deleted successfully"));
   } catch (error) {
     next(error);
   }
 });
+
+
+// export const deleteSell = asyncHandler(async (req, res, next) => {
+//   try {
+//     const { id } = req.params;
+
+//     // Validate sell ID
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       return res.status(400).json(new ApiError(400, "Invalid sell ID"));
+//     }
+
+//     // Find the sell record
+//     const sell = await Sell.findById(id);
+//     if (!sell) {
+//       return res.status(404).json(new ApiError(404, "Sell not found"));
+//     }
+
+//     // Find the inventory record related to the sell
+//     const inventory = await StockInventory.findOne({ stockId: sell.stockId });
+//     if (!inventory) {
+//       return res.status(404).json(new ApiError(404, "Inventory record not found"));
+//     }
+
+//     // Update inventory before deleting the sell
+//     inventory.totalSold = Math.max(0, inventory.totalSold - sell.stockQty); // Prevent negative totalSold
+//     inventory.remaining += sell.stockQty; // Add back the sold quantity
+//     await inventory.save();
+
+//     // Delete the sell record
+//     await sell.deleteOne();
+
+//     return res
+//       .status(200)
+//       .json(new ApiResponse(200, null, "Sell deleted successfully"));
+//   } catch (error) {
+//     next(error);
+//   }
+// });
 
 
 export default router;

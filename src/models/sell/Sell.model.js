@@ -20,6 +20,32 @@ const SellSchema = new Schema(
       type: Number,
       required: true,
       min: [1, "Stock quantity must be at least 1"],
+      validate: {
+        validator: async function() {
+          // Check available stock using FIFO method
+          const StockInventory = model('StockInventory');
+          const availableStock = await StockInventory.aggregate([
+            { 
+              $match: { 
+                stockId: this.stockId,
+                date: { $lte: this.salesDate }
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                total: {
+                  $sum: { $subtract: ["$totalPurchased", "$totalSold"] }
+                }
+              }
+            }
+          ]);
+          
+          return availableStock.length && 
+                 availableStock[0].total >= this.stockQty;
+        },
+        message: "Insufficient stock available for sale"
+      }
     },
     stockSoldPrice: {
       type: Number,

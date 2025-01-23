@@ -7,6 +7,7 @@ import Sell from "../../models/sell/Sell.model.js";
 import StockMaster from "../../models/stock/StockMaster.model.js";
 import moment from 'moment';
 import Purchase from "../../models/purchase/Purchase.model.js";
+import mongoose from "mongoose";
 
 // export const getCfBfList = asyncHandler(async (req, res) => {
 //     const {stockId} = req.params;
@@ -17,60 +18,119 @@ import Purchase from "../../models/purchase/Purchase.model.js";
 //     return res.status(200).json(new ApiResponse(200, cfbfRecords, "CFBF records fetched successfully"))
 // })
 
-export const getCfBfList = asyncHandler(async (req, res) => {
-  // Fetch all stocks from inventory with remaining > 0
-  const inventoryRecords = await StockInventory.find({
-    remaining: { $gt: 0 }, // Only include stocks with remaining quantity
-    createdBy: req.user._id,
-  }).populate("stockId");
 
-  if (!inventoryRecords.length) {
-    return res
-      .status(404)
-      .json(new ApiError(404, "No inventory records found with remaining stock"));
-  }
 
-  // Extract all stock IDs from inventory records
-  const stockIds = inventoryRecords.map((record) => record.stockId._id);
+// export const getCfBfList = asyncHandler(async (req, res) => {
+//   // Fetch all stocks from inventory with remaining > 0
+//   const inventoryRecords = await StockInventory.find({
+//     remaining: { $gt: 0 }, // Only include stocks with remaining quantity
+//     createdBy: req.user._id,
+//   }).populate("stockId");
 
-  // Fetch corresponding CFBF records for these stock IDs
-  const cfbfRecords = await InventoryCFBF.find({
-    stockId: { $in: stockIds },
-    createdBy: req.user._id,
-  });
+//   if (!inventoryRecords.length) {
+//     return res
+//       .status(404)
+//       .json(new ApiError(404, "No inventory records found with remaining stock"));
+//   }
 
-  // Map CFBF records for quick lookup and calculate overall status
-  const cfbfMap = cfbfRecords.reduce((map, record) => {
-    const stockId = record.stockId.toString();
-    if (!map[stockId]) {
-      map[stockId] = [];
-    }
-    map[stockId].push(record.status);
-    return map;
-  }, {});
+//   // Extract all stock IDs from inventory records
+//   const stockIds = inventoryRecords.map((record) => record.stockId._id);
 
-  // Prepare the consolidated response
-  const response = inventoryRecords.map((inventory) => {
-    const stockId = inventory.stockId._id.toString();
-    const relatedStatuses = cfbfMap[stockId] || []; // Get related statuses or an empty array
+//   // Fetch corresponding CFBF records for these stock IDs
+//   const cfbfRecords = await InventoryCFBF.find({
+//     stockId: { $in: stockIds },
+//     createdBy: req.user._id,
+//   });
 
-    // Determine overall status: "initial" if no related statuses, otherwise include statuses
-    const overallStatus = relatedStatuses.length > 0 ? relatedStatuses : ["initial"];
-    console.log(overallStatus);
-    return {
-      stockId: inventory.stockId._id,
-      stockName: inventory.stockId.stockName, // Assuming stock name is available in inventory schema
-      remainingStock: inventory.remaining,
-      cfbfStatus: overallStatus[overallStatus.length - 1],
-    };
-  });
+//   // Map CFBF records for quick lookup and calculate overall status
+//   const cfbfMap = cfbfRecords.reduce((map, record) => {
+//     const stockId = record.stockId.toString();
+//     if (!map[stockId]) {
+//       map[stockId] = [];
+//     }
+//     map[stockId].push(record.status);
+//     return map;
+//   }, {});
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, response, "Inventory with CFBF status fetched successfully"));
-});
+//   // Prepare the consolidated response
+//   const response = inventoryRecords.map((inventory) => {
+//     const stockId = inventory.stockId._id.toString();
+//     const relatedStatuses = cfbfMap[stockId] || []; // Get related statuses or an empty array
+
+//     // Determine overall status: "initial" if no related statuses, otherwise include statuses
+//     const overallStatus = relatedStatuses.length > 0 ? relatedStatuses : ["initial"];
+//     console.log(overallStatus);
+//     return {
+//       stockId: inventory.stockId._id,
+//       stockName: inventory.stockId.stockName, // Assuming stock name is available in inventory schema
+//       remainingStock: inventory.remaining,
+//       cfbfStatus: overallStatus[overallStatus.length - 1],
+//     };
+//   });
+
+//   return res
+//     .status(200)
+//     .json(new ApiResponse(200, response, "Inventory with CFBF status fetched successfully"));
+// });
 
   
+export const getCfBfList = asyncHandler(async (req, res, next) => {
+  try {
+    // Fetch all inventory records with remaining stock > 0 for the current user
+    const inventoryRecords = await StockInventory.find({
+      remaining: { $gt: 0 },
+      createdBy: req.user._id,
+    }).populate("stockId");
+
+    if (!inventoryRecords.length) {
+      return res
+        .status(404)
+        .json(new ApiError(404, "No inventory records found with remaining stock"));
+    }
+
+    // Extract stock IDs from inventory records
+    const stockIds = inventoryRecords.map((record) => record.stockId._id);
+
+    // Fetch CFBF records related to these stock IDs
+    const cfbfRecords = await InventoryCFBF.find({
+      stockId: { $in: stockIds },
+      createdBy: req.user._id,
+    });
+
+    // Map CFBF records for quick lookup by stock ID
+    const cfbfMap = cfbfRecords.reduce((map, record) => {
+      const stockId = record.stockId.toString();
+      if (!map[stockId]) {
+        map[stockId] = [];
+      }
+      map[stockId].push(record.status);
+      return map;
+    }, {});
+
+    // Prepare the response data
+    const response = inventoryRecords.map((inventory) => {
+      const stockId = inventory.stockId._id.toString();
+      const relatedStatuses = cfbfMap[stockId] || ["initial"]; // Default to "initial" if no statuses
+
+      // Get the latest status based on the statuses
+      const latestStatus = relatedStatuses[relatedStatuses.length - 1];
+
+      return {
+        stockId: inventory.stockId._id,
+        stockName: inventory.stockId.stockName, // Assuming stockName exists in stockId schema
+        remainingStock: inventory.remaining,
+        cfbfStatus: latestStatus, // Return the latest status
+      };
+    });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, response, "Inventory with CFBF status fetched successfully"));
+  } catch (error) {
+    next(error); // Forward errors to error-handling middleware
+  }
+});
+
 
 // export const carryForward = asyncHandler(async (req, res) => {
 //     const {items} = req.body;
@@ -107,86 +167,248 @@ export const getCfBfList = asyncHandler(async (req, res) => {
 // })
 
 
-
 export const carryForward = asyncHandler(async (req, res) => {
   const { stockId } = req.params;
-  const { amount:carryForwardAmount } = req.body; // Amount to carry forward
+  const { amount: carryForwardAmount } = req.body;
   const userId = req.user._id;
 
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    // Check for pending carry-forward status
-    const existingPendingCF = await InventoryCFBF.findOne({
+    // Check for any existing CF/BF records
+    const existingCFBF = await InventoryCFBF.findOne({
       stockId,
-      status: "pending",
-    });
+      status: { $in: ['pending', 'complete'] }
+    }).session(session);
 
-    if (existingPendingCF) {
-      return res.status(400).json(
-        new ApiResponse(400, {
-          message: "Carry forward already exists for this stock in pending state"
-        })
-      );
+    if (existingCFBF) {
+      throw new Error('Stock already has an active carry forward record');
     }
 
-    // Check if stock exists with sufficient remaining quantity
-    const inventory = await StockInventory.findOne({
-      stockId,
-      remaining: { $gt: 0 }
-    });
+    // Fetch stock data from Inventory
+    const stock = await StockInventory.find({stockId}).session(session);
 
-    if (!inventory) {
-      return res.status(404).json(
-        new ApiResponse(404, {
-          message: "Insufficient stock available to carry forward"
-        })
-      );
+    if (!stock) {
+      throw new Error('Stock not found');
     }
 
+    const { totalPurchased, totalSold } = stock;
+    const remainingQty = totalPurchased - totalSold;
 
-    const cfAmount = carryForwardAmount * inventory.remaining;
-  
+    if (remainingQty <= 0) {
+      throw new Error('No stock available for carry forward');
+    }
 
-    // Create carry-forward record
+    // Validate carryForwardAmount
+    if (!carryForwardAmount || carryForwardAmount <= 0) {
+      throw new Error('Invalid carry forward amount');
+    }
+
+    // Create new CF record
     const newCFBF = new InventoryCFBF({
       stockId,
       cFDate: new Date(),
-      amount: cfAmount,
-      stockQty: inventory.remaining,
-      status: "pending",
-      createdBy: userId,
+      openingBalance: carryForwardAmount,
+      openingQty: remainingQty,
+      status: 'pending',
+      createdBy: userId
     });
-    try {
-      const savedCFBF = await newCFBF.save();
 
-      // Update inventory remaining quantity
-      await inventory.save();
+    await newCFBF.save({ session });
 
+    await session.commitTransaction();
 
-      return res.status(200).json(
-        new ApiResponse(200, savedCFBF, "Carry forward process completed")
-      );
-      
-    } catch (error) {
-      console.error(error)
-      return res.status(500).json(
-        new ApiResponse(500, {
-          message: "Error in carry forward process",
-          error: error.message
-        })
-      );
-    }
+    return res.status(200).json(
+      new ApiResponse(200, newCFBF, 'Carry forward created successfully')
+    );
 
   } catch (error) {
-    return res.status(500).json(
-      new ApiResponse(500, {
-        message: "Error in carry forward process",
-        error: error.message
-      })
+    await session.abortTransaction();
+    return res.status(400).json(
+      new ApiResponse(400, null, error.message)
     );
+  } finally {
+    session.endSession();
   }
 });
 
 
+
+// export const carryForward = asyncHandler(async (req, res, next) => {
+//   const { stockId } = req.params;
+//   const { amount: carryForwardAmount, } = req.body;
+//   console.log(stockId, carryForwardAmount, cfDate)
+//   const userId = req.user._id;
+
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     // Validate existing pending CF/BF record
+//     const existingPendingCF = await InventoryCFBF.findOne({
+//       stockId,
+//       status: "pending",
+//       createdBy: userId, // Ensure the CF belongs to the current user
+//     }).session(session);
+
+//     if (existingPendingCF) {
+//       throw new ApiError(400, "A pending carry forward already exists for this stock");
+//     }
+
+//     // Check available stock
+//     const inventory = await StockInventory.findOne({
+//       stockId,
+//       createdBy: userId,
+//       remaining: { $gt: 0 }, // Ensure there is stock available for carry forward
+//     }).session(session);
+
+//     if (!inventory) {
+//       throw new ApiError(404, "No available stock for carry forward");
+//     }
+
+//     // Validate carry forward amount
+//     if (carryForwardAmount <= 0) {
+//       throw new ApiError(400, "Carry forward amount must be greater than zero");
+//     }
+
+//     if (carryForwardAmount > inventory.remaining) {
+//       throw new ApiError(400, "Carry forward amount exceeds available stock");
+//     }
+
+//     // Calculate carry forward amount
+//     const cfAmount = carryForwardAmount * inventory.remaining;
+
+//     // Create a carry forward (CF) record
+//     const newCFBF = new InventoryCFBF({
+//       stockId,
+//       cFDate: cfDate || new Date(), // Use provided date or default to current date
+//       amount: cfAmount,
+//       stockQty: carryForwardAmount,
+//       status: "pending",
+//       createdBy: userId,
+//     });
+
+//     await newCFBF.save({ session });
+
+//     // Update inventory by reducing remaining stock
+//     inventory.remaining -= carryForwardAmount;
+//     await inventory.save({ session });
+
+//     // Commit the transaction
+//     await session.commitTransaction();
+
+//     return res.status(200).json(
+//       new ApiResponse(200, newCFBF, "Carry forward completed successfully")
+//     );
+//   } catch (error) {
+//     // Rollback the transaction in case of an error
+//     await session.abortTransaction();
+//     next(error);
+//   } finally {
+//     // End the session
+//     session.endSession();
+//   }
+// });
+
+
+
+
+
+// export const broughtForward = asyncHandler(async (req, res) => {
+//   const {stockId}  = req.params;
+//   const currentDate = new Date(); // Use current date for brought forward
+
+//   // Validate input
+//   console.log(stockId)
+//   if (!stockId) {
+//     return res.status(400).json(new ApiError(400, "Stock ID is required"));
+//   }
+
+//   // Find the first record with the given stockId and empty bFDate
+//   const cfbfRecord = await InventoryCFBF.findOne({
+//     stockId,
+//     cFDate: { $ne: null }, // Ensure it has a carry-forward date
+//     bFDate: null, // Ensure it hasn't already been brought forward
+//   }).sort({ cFDate: 1 }); // Sort by carry forward date (optional for prioritization)
+
+//   if (!cfbfRecord) {
+//     return res
+//       .status(400)
+//       .json(new ApiError(400, "No eligible carry forward record found"));
+//   }
+
+//   // Update the carry forward record to reflect the brought forward action
+//   cfbfRecord.bFDate = currentDate;
+//   cfbfRecord.status = "complete";
+
+//   try {
+//     const updatedCFBFRecord = await cfbfRecord.save();
+//     return res
+//       .status(200)
+//       .json(
+//         new ApiResponse(
+//           200,
+//           updatedCFBFRecord,
+//           "Brought Forward successfully completed"
+//         )
+//       );
+//   } catch (error) {
+//     return res.status(500).json(new ApiError(500, error.message));
+//   }
+// });
+
+
+export const broughtForward = asyncHandler(async (req, res, next) => {
+  const { stockId } = req.params;
+  const currentDate = new Date(); // Use the current date for brought forward
+
+  // Validate input
+  if (!stockId) {
+    return res.status(400).json(new ApiError(400, "Stock ID is required"));
+  }
+
+  try {
+    // Find the first eligible carry-forward record
+    const cfbfRecord = await InventoryCFBF.findOne({
+      stockId,
+      cFDate: { $ne: null }, // Must have a carry-forward date
+      bFDate: null, // Must not already be brought forward
+      status: "pending", // Only pending records are eligible
+    })
+      .sort({ cFDate: 1 }) // Optional: prioritize older records
+      .exec();
+
+    if (!cfbfRecord) {
+      return res
+        .status(404)
+        .json(new ApiError(404, "No eligible carry-forward record found"));
+    }
+
+    // Update the record to reflect the brought forward action
+    cfbfRecord.bFDate = currentDate;
+    cfbfRecord.status = "complete";
+
+    const updatedCFBFRecord = await cfbfRecord.save();
+
+    // Optionally update stock inventory (if required by business logic)
+    const inventory = await StockInventory.findOne({ stockId });
+    if (inventory) {
+      inventory.remaining += cfbfRecord.stockQty; // Add back the brought-forward stock
+      await inventory.save();
+    }
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        updatedCFBFRecord,
+        "Brought forward successfully completed"
+      )
+    );
+  } catch (error) {
+    next(error); // Pass the error to the error-handling middleware
+  }
+});
 
 
 // export const carryForward = asyncHandler(async (req, res) => {
@@ -286,50 +508,6 @@ export const carryForward = asyncHandler(async (req, res) => {
 //   });
 
 
-
-
-export const broughtForward = asyncHandler(async (req, res) => {
-    const {stockId}  = req.params;
-    const currentDate = new Date(); // Use current date for brought forward
-  
-    // Validate input
-    console.log(stockId)
-    if (!stockId) {
-      return res.status(400).json(new ApiError(400, "Stock ID is required"));
-    }
-  
-    // Find the first record with the given stockId and empty bFDate
-    const cfbfRecord = await InventoryCFBF.findOne({
-      stockId,
-      cFDate: { $ne: null }, // Ensure it has a carry-forward date
-      bFDate: null, // Ensure it hasn't already been brought forward
-    }).sort({ cFDate: 1 }); // Sort by carry forward date (optional for prioritization)
-  
-    if (!cfbfRecord) {
-      return res
-        .status(400)
-        .json(new ApiError(400, "No eligible carry forward record found"));
-    }
-  
-    // Update the carry forward record to reflect the brought forward action
-    cfbfRecord.bFDate = currentDate;
-    cfbfRecord.status = "complete";
-  
-    try {
-      const updatedCFBFRecord = await cfbfRecord.save();
-      return res
-        .status(200)
-        .json(
-          new ApiResponse(
-            200,
-            updatedCFBFRecord,
-            "Brought Forward successfully completed"
-          )
-        );
-    } catch (error) {
-      return res.status(500).json(new ApiError(500, error.message));
-    }
-  });
 
 
 
